@@ -2,6 +2,25 @@
 
 A hangout spot you reach over SSH: trivia, snake, a chat lobby with an online list, a meme gallery and a leaderboard, with a live clock in the header. No shell access — every connection lands in the TUI.
 
+![The hub's main menu](docs/screenshots/menu.png)
+
+## Features
+
+**Chat lobby** — live chat with everyone connected, plus an online list showing who's chatting (●) and who's elsewhere in the hub (○).
+
+![Chat lobby with the online list](docs/screenshots/chat.png)
+
+<table>
+  <tr>
+    <td width="50%"><b>Trivia</b> — 10 random questions from a bank of 100+, 15 seconds each, faster answers score more.<br><br><img src="docs/screenshots/trivia.png" alt="Trivia question after a correct answer"></td>
+    <td width="50%"><b>Snake</b> — the classic, over SSH. It speeds up with every apple.<br><br><img src="docs/screenshots/snake.png" alt="Snake game in progress"></td>
+  </tr>
+  <tr>
+    <td width="50%"><b>Meme gallery</b> — terminal art, browse with ←/→.<br><br><img src="docs/screenshots/memes.png" alt="Doge meme in the gallery"></td>
+    <td width="50%"><b>Leaderboard</b> — best score per player, one tab per game.<br><br><img src="docs/screenshots/leaderboard.png" alt="Trivia leaderboard"></td>
+  </tr>
+</table>
+
 ## Run
 
 ```sh
