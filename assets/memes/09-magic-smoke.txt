@@ -1,0 +1,14 @@
+               (  )   (   )  )
+                ) (   )  (  (
+                ( )  (    ) )
+               _____________
+              |  ┌───────┐  |
+              |  │ CHIP  │  |
+              |  └───────┘  |
+              |_____________|
+               | | | | | | |
+
+   All electronics run on magic smoke.
+   Let the smoke out and they stop working.
+
+        (checked polarity? no.)

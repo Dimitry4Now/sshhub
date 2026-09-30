@@ -1,0 +1,12 @@
+     ┌─────────────────────────────┐
+     │  FRIDAY  16:58              │
+     │                             │
+     │  $ git push origin main     │
+     │  $ ./deploy.sh --prod       │
+     │                             │
+     │  > deploying...             │
+     │                             │
+     │  me: "see you monday!"      │
+     └─────────────────────────────┘
+
+         pager, 17:03:  📟 📟 📟

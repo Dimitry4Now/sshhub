@@ -1,0 +1,10 @@
+   you:    $ git push --force
+           + 3f1c2a9...a07b4e1 main -> main (forced update)
+
+   team:   where are my last 3 days of commits?
+
+   you:    ...
+
+   team:   (╯°□°)╯︵ ┻━┻
+
+           use --force-with-lease.

@@ -1,0 +1,11 @@
+   Web dev hello world:
+      console.log("Hello, world!")
+
+   Embedded hello world:
+      2 hours reading a 900-page datasheet
+      1 hour setting up the toolchain
+      45 min finding the right clock register
+
+           ●  <- LED blinks.
+      
+      I have never felt more alive.

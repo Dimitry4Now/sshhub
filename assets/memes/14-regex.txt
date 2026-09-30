@@ -1,0 +1,7 @@
+   Some people, when confronted with a problem,
+   think "I know, I'll use regular expressions."
+
+   Now they have two problems.
+
+      ^(?:(?!\1)(\w)(?=(?:\w)*\1)){2,}$ 
+                              — Jamie Zawinski, sort of

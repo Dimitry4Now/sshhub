@@ -83,7 +83,13 @@ func (s *memesScreen) View(width, height int) string {
 	}
 	m := s.memes[s.idx]
 	title := headingStyle.Render(m.Title) + dimStyle.Render(fmt.Sprintf("  %d/%d", s.idx+1, len(s.memes)))
-	art := lipgloss.NewStyle().MaxWidth(width - 8).MaxHeight(height - 8).Render(m.Art)
+	// The frame takes 6 lines (border, padding, title, gap) and 8 columns.
+	maxH := max(height-6, 1)
+	art := lipgloss.NewStyle().MaxWidth(width - 8).MaxHeight(maxH).Render(m.Art)
+	if lipgloss.Height(m.Art) > maxH {
+		art = lipgloss.NewStyle().MaxWidth(width-8).MaxHeight(maxH-1).Render(m.Art) + "\n" +
+			dimStyle.Render("↕ make the window taller to see it all")
+	}
 	return boxStyle.Render(lipgloss.JoinVertical(lipgloss.Center, title, "", art))
 }
 

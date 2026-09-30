@@ -1,0 +1,6 @@
+   Heaviest objects in the universe:
+
+   ☀  the Sun .................. 2 × 10³⁰ kg
+   ●  a neutron star ........... 3 × 10³⁰ kg
+   ◉  a black hole ............. 10³¹+ kg
+   📁 node_modules ............. yes

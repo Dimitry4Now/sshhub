@@ -1,0 +1,8 @@
+  ┌────────────────────────────────────────────┐
+  │  There are only two hard things in         │
+  │  computer science:                         │
+  │                                            │
+  │    1. cache invalidation                   │
+  │    2. naming things                        │
+  │    3. off-by-one errors                    │
+  └────────────────────────────────────────────┘
