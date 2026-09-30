@@ -46,6 +46,7 @@ func (s *nickScreen) Update(msg tea.Msg) tea.Cmd {
 			s.err = "Something went wrong: " + msg.err.Error()
 		default:
 			s.sess.Nick = msg.nick
+			s.deps.Hub.SetNick(s.sess.HubID, msg.nick)
 			return back
 		}
 		return nil

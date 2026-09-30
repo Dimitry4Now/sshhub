@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"sshhub/internal/hub"
 	"sshhub/internal/store"
 )
 
@@ -16,12 +17,13 @@ type Session struct {
 	Fingerprint string // SSH key fingerprint; empty for guests
 	Nick        string // empty until a key user picks one
 	Guest       bool   // logged in without a key; scores are not saved
+	HubID       int    // presence id in the shared hub
 }
 
 // Deps are shared by every session.
 type Deps struct {
 	Store     *store.Store
-	Online    func() int
+	Hub       *hub.Hub
 	Questions []Question
 	Memes     []Meme
 }
@@ -118,7 +120,7 @@ func (m *Model) header() string {
 		who += " (guest)"
 	}
 	left := titleStyle.Render(" ▓ SSH HUB ")
-	mid := dimStyle.Render(fmt.Sprintf("%s · %d online", who, m.deps.Online()))
+	mid := dimStyle.Render(fmt.Sprintf("%s · %d online", who, m.deps.Hub.Count()))
 	right := clockStyle.Render(m.now.Format("Mon 02 Jan  15:04:05 MST"))
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(mid) - lipgloss.Width(right)

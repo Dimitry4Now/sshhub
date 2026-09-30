@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 
 	"sshhub/assets"
 	"sshhub/internal/app"
+	"sshhub/internal/hub"
 	"sshhub/internal/store"
 )
 
@@ -49,10 +49,9 @@ func main() {
 		log.Fatal("load memes", "err", err)
 	}
 
-	var online atomic.Int64
 	deps := &app.Deps{
 		Store:     st,
-		Online:    func() int { return int(online.Load()) },
+		Hub:       hub.New(),
 		Questions: questions,
 		Memes:     memes,
 	}
@@ -68,7 +67,6 @@ func main() {
 		wish.WithMaxTimeout(3*time.Hour),
 		wish.WithMiddleware(
 			bubbletea.Middleware(teaHandler(deps)),
-			countOnline(&online),
 			activeterm.Middleware(),
 			ratelimiter.Middleware(ratelimiter.NewRateLimiter(rate.Every(2*time.Second), 5, 4096)),
 			logging.Middleware(),
@@ -119,17 +117,11 @@ func teaHandler(deps *app.Deps) bubbletea.Handler {
 				sess.Nick = "guest"
 			}
 		}
+		sess.HubID = deps.Hub.Connect(sess.Nick, sess.Guest)
+		go func() {
+			<-s.Context().Done()
+			deps.Hub.Disconnect(sess.HubID)
+		}()
 		return app.New(deps, sess), bubbletea.MakeOptions(s)
-	}
-}
-
-// countOnline tracks how many sessions are connected.
-func countOnline(n *atomic.Int64) wish.Middleware {
-	return func(next ssh.Handler) ssh.Handler {
-		return func(s ssh.Session) {
-			n.Add(1)
-			defer n.Add(-1)
-			next(s)
-		}
 	}
 }
