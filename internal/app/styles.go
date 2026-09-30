@@ -3,7 +3,7 @@ package app
 import "charm.land/lipgloss/v2"
 
 var (
-	accent  = lipgloss.Color("#FF5FAF")
+	accent  = lipgloss.Color("#00665E") // Aston Martin F1 racing green
 	accent2 = lipgloss.Color("#5FD7FF")
 	good    = lipgloss.Color("#87D75F")
 	bad     = lipgloss.Color("#FF5F5F")
@@ -13,7 +13,7 @@ var (
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderBottom(true).
 			BorderForeground(muted)
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#1C1C1C")).Background(accent)
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(accent)
 	clockStyle = lipgloss.NewStyle().Bold(true).Foreground(accent2)
 	dimStyle   = lipgloss.NewStyle().Foreground(muted)
 	helpStyle  = lipgloss.NewStyle().Foreground(muted).Padding(0, 1)
