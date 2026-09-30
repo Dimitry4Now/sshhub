@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const (
@@ -229,8 +230,12 @@ func (s *triviaScreen) View(width, height int) string {
 		dimStyle.Render(fmt.Sprintf("score %d", s.score)), timer)
 	b.WriteString(q.Q + "\n\n")
 
+	// Wrap long choices with a hanging indent under the text, not the marker.
+	// The box takes 8 columns (border + padding), the "▸ a) " prefix 5 more.
+	textW := max(w-13, 10)
 	for i, c := range q.Choices {
-		label := fmt.Sprintf("%c) %s", 'a'+i, c)
+		wrapped := lipgloss.NewStyle().Width(textW).Render(c)
+		label := fmt.Sprintf("%c) %s", 'a'+i, strings.ReplaceAll(wrapped, "\n", "\n     "))
 		switch {
 		case s.state == triviaReveal && i == q.Answer:
 			b.WriteString(goodStyle.Render("✔ " + label))
