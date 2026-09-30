@@ -22,6 +22,8 @@ type menuScreen struct {
 func newMenu(deps *Deps, sess *Session) *menuScreen {
 	return &menuScreen{items: []menuItem{
 		{"Trivia", "10 questions, beat the clock", func() screen { return newTrivia(deps, sess) }},
+		{"Snake", "the classic, now over SSH", func() screen { return newSnake(deps, sess) }},
+		{"Chat lobby", "talk to whoever's around", func() screen { return newChat(deps, sess) }},
 		{"Meme gallery", "curated terminal art", func() screen { return newMemes(deps) }},
 		{"Leaderboard", "hall of fame", func() screen { return newLeaderboard(deps, sess) }},
 		{"Quit", "see you around", nil},
@@ -105,4 +107,6 @@ func (s *menuScreen) View(width, height int) string {
 	return menu
 }
 
-func (s *menuScreen) Help() string { return "↑/↓ move · enter select · 1-4 jump · q quit" }
+func (s *menuScreen) Help() string {
+	return "↑/↓ move · enter select · 1-" + strconv.Itoa(len(s.items)) + " jump · q quit"
+}

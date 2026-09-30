@@ -9,7 +9,14 @@ import (
 	"sshhub/internal/store"
 )
 
+// boards are the leaderboard tabs.
+var boards = []struct{ game, title string }{
+	{triviaGame, "Trivia"},
+	{snakeGame, "Snake"},
+}
+
 type leaderboardMsg struct {
+	game string
 	rows []store.Score
 	err  error
 }
@@ -17,6 +24,7 @@ type leaderboardMsg struct {
 type leaderboardScreen struct {
 	deps    *Deps
 	sess    *Session
+	tab     int
 	rows    []store.Score
 	err     error
 	loading bool
@@ -28,22 +36,30 @@ func newLeaderboard(deps *Deps, sess *Session) *leaderboardScreen {
 
 func (s *leaderboardScreen) Init() tea.Cmd {
 	s.loading = true
-	st := s.deps.Store
+	st, game := s.deps.Store, boards[s.tab].game
 	return func() tea.Msg {
-		rows, err := st.Top(triviaGame, 10)
-		return leaderboardMsg{rows, err}
+		rows, err := st.Top(game, 10)
+		return leaderboardMsg{game, rows, err}
 	}
 }
 
 func (s *leaderboardScreen) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case leaderboardMsg:
-		s.rows, s.err, s.loading = msg.rows, msg.err, false
+		if msg.game == boards[s.tab].game {
+			s.rows, s.err, s.loading = msg.rows, msg.err, false
+		}
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc", "q":
 			return back
 		case "r":
+			return s.Init()
+		case "right", "l", "tab":
+			s.tab = (s.tab + 1) % len(boards)
+			return s.Init()
+		case "left", "h", "shift+tab":
+			s.tab = (s.tab - 1 + len(boards)) % len(boards)
 			return s.Init()
 		}
 	}
@@ -52,7 +68,16 @@ func (s *leaderboardScreen) Update(msg tea.Msg) tea.Cmd {
 
 func (s *leaderboardScreen) View(width, height int) string {
 	var b strings.Builder
-	b.WriteString(headingStyle.Render("🏆 Trivia leaderboard") + "\n\n")
+	b.WriteString(headingStyle.Render("🏆 Leaderboard") + "\n\n")
+	for i, bd := range boards {
+		if i == s.tab {
+			b.WriteString(selectedStyle.Render("[ " + bd.title + " ]"))
+		} else {
+			b.WriteString(dimStyle.Render("  " + bd.title + "  "))
+		}
+		b.WriteString(" ")
+	}
+	b.WriteString("\n\n")
 	switch {
 	case s.loading:
 		b.WriteString(dimStyle.Render("loading…"))
@@ -78,4 +103,4 @@ func (s *leaderboardScreen) View(width, height int) string {
 	return boxStyle.Width(min(52, width-2)).Render(strings.TrimRight(b.String(), "\n"))
 }
 
-func (s *leaderboardScreen) Help() string { return "r refresh · esc menu" }
+func (s *leaderboardScreen) Help() string { return "←/→ switch game · r refresh · esc menu" }
