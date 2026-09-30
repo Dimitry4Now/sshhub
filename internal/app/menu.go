@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type menuItem struct {
@@ -59,19 +60,49 @@ func (s *menuScreen) choose(i int) tea.Cmd {
 	return switchTo(s.items[i].open())
 }
 
+// logo is "SSH HUB" in the ANSI Shadow figlet font.
+var logo = []string{
+	"███████╗███████╗██╗  ██╗    ██╗  ██╗██╗   ██╗██████╗ ",
+	"██╔════╝██╔════╝██║  ██║    ██║  ██║██║   ██║██╔══██╗",
+	"███████╗███████╗███████║    ███████║██║   ██║██████╔╝",
+	"╚════██║╚════██║██╔══██║    ██╔══██║██║   ██║██╔══██╗",
+	"███████║███████║██║  ██║    ██║  ██║╚██████╔╝██████╔╝",
+	"╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ",
+}
+
+// logoGradient fades from racing green to lime, one color per logo row.
+var logoGradient = []string{"#00665E", "#00857C", "#00A19B", "#6FBF4A", "#A5CE1F", "#CEDC00"}
+
+func renderLogo() string {
+	rows := make([]string, len(logo))
+	for i, row := range logo {
+		rows[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(logoGradient[i])).Render(row)
+	}
+	return strings.Join(rows, "\n")
+}
+
 func (s *menuScreen) View(width, height int) string {
 	var b strings.Builder
-	b.WriteString(headingStyle.Render("Welcome to the hub") + "\n\n")
 	for i, it := range s.items {
-		line := strconv.Itoa(i+1) + ". " + it.title
+		num := " " + strconv.Itoa(i+1) + " "
 		if i == s.cursor {
-			b.WriteString(selectedStyle.Render("▸ "+line) + "  " + dimStyle.Render(it.desc))
+			b.WriteString(selectedStyle.Render("┃ "+num+" "+it.title) + "\n")
+			b.WriteString(selectedStyle.Render("┃ ") + "     " + it.desc + "\n")
 		} else {
-			b.WriteString("  " + line)
+			b.WriteString("  " + dimStyle.Render(num) + " " + it.title + "\n")
+			b.WriteString("       " + dimStyle.Render(it.desc) + "\n")
 		}
-		b.WriteString("\n")
+		if i < len(s.items)-1 {
+			b.WriteString("\n")
+		}
 	}
-	return boxStyle.Width(min(52, width-2)).Render(strings.TrimRight(b.String(), "\n"))
+	menu := boxStyle.Padding(1, 4).Width(min(60, width-2)).Render(strings.TrimRight(b.String(), "\n"))
+
+	// Show the big logo only when it fits above the menu.
+	if width >= lipgloss.Width(logo[0])+2 && height >= lipgloss.Height(menu)+len(logo)+2 {
+		return lipgloss.JoinVertical(lipgloss.Center, renderLogo(), "", menu)
+	}
+	return menu
 }
 
 func (s *menuScreen) Help() string { return "↑/↓ move · enter select · 1-4 jump · q quit" }
