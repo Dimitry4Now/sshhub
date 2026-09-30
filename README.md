@@ -1,6 +1,6 @@
 # sshhub
 
-A hangout spot you reach over SSH: trivia, a meme gallery and a leaderboard, with a live clock in the header. No shell access — every connection lands in the TUI.
+A hangout spot you reach over SSH: trivia, snake, a chat lobby with an online list, a meme gallery and a leaderboard, with a live clock in the header. No shell access — every connection lands in the TUI.
 
 ## Run
 
