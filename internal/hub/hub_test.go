@@ -19,8 +19,8 @@ func TestClean(t *testing.T) {
 
 func TestChatFlow(t *testing.T) {
 	h := New()
-	a := h.Connect("alice", false)
-	b := h.Connect("bob", true)
+	a := h.Connect("", "alice", false, nil)
+	b := h.Connect("", "bob", true, nil)
 	if h.Count() != 2 {
 		t.Fatalf("count = %d", h.Count())
 	}
@@ -54,5 +54,39 @@ func TestChatFlow(t *testing.T) {
 	}
 	if h.Count() != 1 {
 		t.Fatalf("count = %d", h.Count())
+	}
+}
+
+func TestOneSessionPerIdentity(t *testing.T) {
+	h := New()
+	kicked := make(chan struct{})
+	first := h.Connect("key:abc", "alice", false, func() { close(kicked) })
+	_, sub := h.Join(first)
+	<-sub
+
+	second := h.Connect("key:abc", "alice", false, nil)
+	<-kicked
+	if _, ok := <-sub; ok {
+		t.Fatal("old chat subscription not closed")
+	}
+	if h.Count() != 1 {
+		t.Fatalf("count = %d, want 1", h.Count())
+	}
+
+	// The old session's late disconnect must not drop the new one.
+	h.Disconnect(first)
+	if h.Count() != 1 {
+		t.Fatalf("count = %d after stale disconnect", h.Count())
+	}
+	third := h.Connect("key:abc", "alice", false, nil)
+	if h.Count() != 1 || third == second {
+		t.Fatalf("count = %d", h.Count())
+	}
+
+	// Empty identity allows duplicates.
+	h.Connect("", "dev", false, nil)
+	h.Connect("", "dev", false, nil)
+	if h.Count() != 3 {
+		t.Fatalf("count = %d, want 3", h.Count())
 	}
 }

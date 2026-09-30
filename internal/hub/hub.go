@@ -24,29 +24,46 @@ type Message struct {
 }
 
 type member struct {
-	nick   string
-	guest  bool
-	sub    chan Message // non-nil while the member is in the chat lobby
-	lastTx time.Time
+	nick     string
+	guest    bool
+	identity string
+	kick     func()
+	sub      chan Message // non-nil while the member is in the chat lobby
+	lastTx   time.Time
 }
 
 // Hub is shared by every SSH session.
 type Hub struct {
-	mu      sync.Mutex
-	nextID  int
-	members map[int]*member
-	history []Message
+	mu         sync.Mutex
+	nextID     int
+	members    map[int]*member
+	identities map[string]int // identity -> session id, for one session per person
+	history    []Message
 }
 
 // New creates an empty hub.
-func New() *Hub { return &Hub{members: map[int]*member{}} }
+func New() *Hub { return &Hub{members: map[int]*member{}, identities: map[string]int{}} }
 
 // Connect registers a session and returns its id.
-func (h *Hub) Connect(nick string, guest bool) int {
+//
+// identity names the person behind the session (e.g. their key fingerprint).
+// If another session with the same identity exists, it is removed from the hub
+// and its kick function is called so it can close. An empty identity allows
+// any number of sessions.
+func (h *Hub) Connect(identity, nick string, guest bool, kick func()) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if old, ok := h.identities[identity]; ok && identity != "" {
+		if m := h.members[old]; m != nil && m.kick != nil {
+			go m.kick()
+		}
+		h.removeLocked(old)
+	}
 	h.nextID++
-	h.members[h.nextID] = &member{nick: nick, guest: guest}
+	h.members[h.nextID] = &member{nick: nick, guest: guest, identity: identity, kick: kick}
+	if identity != "" {
+		h.identities[identity] = h.nextID
+	}
 	return h.nextID
 }
 
@@ -54,7 +71,18 @@ func (h *Hub) Connect(nick string, guest bool) int {
 func (h *Hub) Disconnect(id int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.removeLocked(id)
+}
+
+func (h *Hub) removeLocked(id int) {
+	m, ok := h.members[id]
+	if !ok {
+		return
+	}
 	h.leaveLocked(id)
+	if h.identities[m.identity] == id {
+		delete(h.identities, m.identity)
+	}
 	delete(h.members, id)
 }
 
