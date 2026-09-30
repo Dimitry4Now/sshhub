@@ -10,7 +10,7 @@ go build -o sshhub .
 ssh -p 23234 localhost         # connect
 ```
 
-Flags: `-addr`, `-db`, `-hostkey`.
+Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally).
 
 The repo pins a newer Go toolchain in `go.mod`; with Go 1.21+ installed it is downloaded automatically.
 
@@ -18,6 +18,7 @@ The repo pins a newer Go toolchain in `go.mod`; with Go 1.21+ installed it is do
 
 - Connecting with an SSH key: the key fingerprint is your account. You pick a nickname on first login and scores are saved.
 - Connecting without a key (`ssh -o PubkeyAuthentication=no you@host`): guest session, named after your SSH username, scores not saved.
+- One session per person: logging in again (same key, or for guests same address and username) closes the older session. Run with `-dev` to turn this off.
 
 ## Adding content
 

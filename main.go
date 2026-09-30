@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"net"
 	"os"
 	"os/signal"
 	"regexp"
@@ -32,6 +33,7 @@ func main() {
 	addr := flag.String("addr", ":23234", "listen address")
 	dbPath := flag.String("db", "hub.db", "SQLite database path")
 	hostKey := flag.String("hostkey", ".ssh/id_ed25519", "host key path (created if missing)")
+	dev := flag.Bool("dev", false, "allow several sessions per person (for local testing)")
 	flag.Parse()
 
 	st, err := store.Open(*dbPath)
@@ -66,7 +68,7 @@ func main() {
 		wish.WithIdleTimeout(15*time.Minute),
 		wish.WithMaxTimeout(3*time.Hour),
 		wish.WithMiddleware(
-			bubbletea.Middleware(teaHandler(deps)),
+			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, *dev)),
 			activeterm.Middleware(),
 			ratelimiter.Middleware(ratelimiter.NewRateLimiter(rate.Every(2*time.Second), 5, 4096)),
 			logging.Middleware(),
@@ -97,11 +99,13 @@ func main() {
 
 var guestNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
-func teaHandler(deps *app.Deps) bubbletea.Handler {
-	return func(s ssh.Session) (tea.Model, []tea.ProgramOption) {
+func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
+	return func(s ssh.Session) *tea.Program {
 		sess := &app.Session{}
+		var identity string
 		if key := s.PublicKey(); key != nil {
 			sess.Fingerprint = gossh.FingerprintSHA256(key)
+			identity = "key:" + sess.Fingerprint
 			nick, err := deps.Store.Nick(sess.Fingerprint)
 			if err != nil {
 				log.Error("lookup nick", "err", err)
@@ -116,12 +120,21 @@ func teaHandler(deps *app.Deps) bubbletea.Handler {
 			if sess.Nick == "" {
 				sess.Nick = "guest"
 			}
+			// Guests are told apart by address and username, so people
+			// sharing a router don't kick each other out.
+			host, _, _ := net.SplitHostPort(s.RemoteAddr().String())
+			identity = "guest:" + host + ":" + sess.Nick
 		}
-		sess.HubID = deps.Hub.Connect(sess.Nick, sess.Guest)
+		if dev {
+			identity = ""
+		}
+
+		p := tea.NewProgram(app.New(deps, sess), bubbletea.MakeOptions(s)...)
+		sess.HubID = deps.Hub.Connect(identity, sess.Nick, sess.Guest, func() { p.Send(app.KickedMsg{}) })
 		go func() {
 			<-s.Context().Done()
 			deps.Hub.Disconnect(sess.HubID)
 		}()
-		return app.New(deps, sess), bubbletea.MakeOptions(s)
+		return p
 	}
 }

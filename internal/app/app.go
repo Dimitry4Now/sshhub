@@ -50,6 +50,9 @@ func switchTo(s screen) tea.Cmd { return func() tea.Msg { return switchMsg{to: s
 
 func back() tea.Msg { return backMsg{} }
 
+// KickedMsg tells a session that the same person connected again elsewhere.
+type KickedMsg struct{}
+
 // Model is the root Bubble Tea model for one SSH session.
 type Model struct {
 	deps   *Deps
@@ -59,6 +62,7 @@ type Model struct {
 	now    time.Time
 	menu   *menuScreen
 	screen screen
+	kicked bool
 }
 
 // New builds the root model for a session.
@@ -81,6 +85,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
+	case KickedMsg:
+		m.kicked = true
+		return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return tea.QuitMsg{} })
+	}
+	if m.kicked {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
@@ -99,6 +114,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) View() tea.View {
+	if m.kicked {
+		msg := boxStyle.Render(headingStyle.Render("You connected from somewhere else") +
+			"\n\nOnly one session per person. This one is closing.")
+		v := tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
+		v.AltScreen = true
+		return v
+	}
 	header := m.header()
 	footer := helpStyle.Render(m.screen.Help())
 	bodyHeight := max(m.height-lipgloss.Height(header)-lipgloss.Height(footer), 1)
