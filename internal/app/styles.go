@@ -6,7 +6,7 @@ var (
 	accent  = lipgloss.Color("#00665E") // Aston Martin F1 racing green
 	accentL = lipgloss.Color("#00A19B") // lighter green, readable as text on dark terminals
 	accent2 = lipgloss.Color("#CEDC00") // Aston Martin lime
-	good    = lipgloss.Color("#87D75F")
+	good    = lipgloss.Color("#3DDC84") // pure green, distinct from the lime
 	bad     = lipgloss.Color("#FF5F5F")
 	muted   = lipgloss.Color("#808080")
 
