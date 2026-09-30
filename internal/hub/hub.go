@@ -185,6 +185,9 @@ func Clean(s string) string {
 }
 
 func display(m *member) string {
+	if m.nick == "" {
+		return "newcomer"
+	}
 	if m.guest {
 		return m.nick + " (guest)"
 	}
