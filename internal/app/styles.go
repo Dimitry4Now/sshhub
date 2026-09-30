@@ -4,7 +4,8 @@ import "charm.land/lipgloss/v2"
 
 var (
 	accent  = lipgloss.Color("#00665E") // Aston Martin F1 racing green
-	accent2 = lipgloss.Color("#5FD7FF")
+	accentL = lipgloss.Color("#00A19B") // lighter green, readable as text on dark terminals
+	accent2 = lipgloss.Color("#CEDC00") // Aston Martin lime
 	good    = lipgloss.Color("#87D75F")
 	bad     = lipgloss.Color("#FF5F5F")
 	muted   = lipgloss.Color("#808080")
@@ -22,7 +23,7 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(accent).
 			Padding(1, 3)
-	headingStyle  = lipgloss.NewStyle().Bold(true).Foreground(accent)
+	headingStyle  = lipgloss.NewStyle().Bold(true).Foreground(accentL)
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(accent2)
 	goodStyle     = lipgloss.NewStyle().Bold(true).Foreground(good)
 	badStyle      = lipgloss.NewStyle().Bold(true).Foreground(bad)
