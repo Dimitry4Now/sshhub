@@ -1,0 +1,8 @@
+
+        (╯°□°)╯︵ ┻━┻
+
+   when the build passes locally
+     but fails in CI
+
+        ┬─┬ノ( º _ ºノ)
+      (please respect tables)
