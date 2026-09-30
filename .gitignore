@@ -1,0 +1,8 @@
+# binaries
+/sshhub
+
+# runtime data
+*.db
+*.db-shm
+*.db-wal
+.ssh/
