@@ -27,6 +27,7 @@ func newMenu(deps *Deps, sess *Session) *menuScreen {
 		{"Chat lobby", "talk to whoever's around", func() screen { return newChat(deps, sess) }},
 		{"Meme gallery", "curated terminal art", func() screen { return newMemes(deps, sess) }},
 		{"Leaderboard", "hall of fame", func() screen { return newLeaderboard(deps, sess) }},
+		{"Settings", "theme, nickname, scores", func() screen { return newSettings(deps, sess) }},
 		{"Quit", "see you around", nil},
 	}}
 }
@@ -83,27 +84,43 @@ func renderLogo(t *styles) string {
 
 func (s *menuScreen) View(width, height int) string {
 	t := theme(s.sess)
-	var b strings.Builder
-	for i, it := range s.items {
-		num := " " + strconv.Itoa(i+1) + " "
-		if i == s.cursor {
-			b.WriteString(t.selected.Render("┃ "+num+" "+it.title) + "\n")
-			b.WriteString(t.selected.Render("┃ ") + "     " + it.desc + "\n")
-		} else {
-			b.WriteString("  " + t.dim.Render(num) + " " + it.title + "\n")
-			b.WriteString("       " + t.dim.Render(it.desc) + "\n")
-		}
-		if i < len(s.items)-1 {
-			b.WriteString("\n")
-		}
+	menu := s.render(t, width, false)
+	if lipgloss.Height(menu) > height {
+		menu = s.render(t, width, true) // small terminal: one line per item
 	}
-	menu := t.box.Padding(1, 4).Width(min(60, width-2)).Render(strings.TrimRight(b.String(), "\n"))
 
 	// Show the big logo only when it fits above the menu.
 	if width >= lipgloss.Width(logo[0])+2 && height >= lipgloss.Height(menu)+len(logo)+2 {
 		return lipgloss.JoinVertical(lipgloss.Center, renderLogo(t), "", menu)
 	}
 	return menu
+}
+
+// render draws the menu box; compact drops descriptions and spacing.
+func (s *menuScreen) render(t *styles, width int, compact bool) string {
+	var b strings.Builder
+	for i, it := range s.items {
+		num := " " + strconv.Itoa(i+1) + " "
+		if i == s.cursor {
+			b.WriteString(t.selected.Render("┃ "+num+" "+it.title) + "\n")
+			if !compact {
+				b.WriteString(t.selected.Render("┃ ") + "     " + it.desc + "\n")
+			}
+		} else {
+			b.WriteString("  " + t.dim.Render(num) + " " + it.title + "\n")
+			if !compact {
+				b.WriteString("       " + t.dim.Render(it.desc) + "\n")
+			}
+		}
+		if !compact && i < len(s.items)-1 {
+			b.WriteString("\n")
+		}
+	}
+	box := t.box.Padding(1, 4)
+	if compact {
+		box = t.box.Padding(0, 2)
+	}
+	return box.Width(min(60, width-2)).Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (s *menuScreen) Help() string {
