@@ -124,6 +124,16 @@ Sleep 700ms
 Type "5"
 Sleep 1s
 Screenshot img/leaderboard.png
+Escape
+Sleep 700ms
+
+# Last, since picking a theme recolors everything after it.
+Type "6"
+Sleep 500ms
+Right
+Right
+Sleep 700ms
+Screenshot img/settings.png
 TAPE
 (cd "$WORK" && vhs hub.tape)
 
