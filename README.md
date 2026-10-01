@@ -12,7 +12,7 @@ A hangout spot you reach over SSH: trivia, snake, a chat lobby with an online li
 
 <table>
   <tr>
-    <td width="50%"><b>Trivia</b> — 10 random questions from a bank of 100+, 15 seconds each, faster answers score more.<br><br><img src="docs/screenshots/trivia.png" alt="Trivia question after a correct answer"></td>
+    <td width="50%"><b>Trivia</b> — 10 random questions from a bank of 100+, 15 seconds each, faster answers score more.<br><br><img src="docs/screenshots/trivia.png" alt="Trivia question after answering"></td>
     <td width="50%"><b>Snake</b> — the classic, over SSH. It speeds up with every apple.<br><br><img src="docs/screenshots/snake.png" alt="Snake game in progress"></td>
   </tr>
   <tr>
@@ -45,3 +45,7 @@ The repo pins a newer Go toolchain in `go.mod`; with Go 1.21+ installed it is do
 - Memes: drop `.txt` or `.ans` files into `assets/memes/`. A leading `NN-` sets the order. Images can be converted with e.g. `chafa --size 60x25 pic.png > assets/memes/07-pic.ans`.
 
 Assets are embedded, so rebuild after changes.
+
+## Screenshots
+
+`scripts/screenshots/screenshots.sh` regenerates the images in `docs/screenshots/`. It runs a demo server with seeded players and chat bots, and records a scripted SSH session with [VHS](https://github.com/charmbracelet/vhs) in headless Chrome, so nothing opens on your desktop. Needs `vhs`, `ttyd`, `ffmpeg` and Chrome/Chromium.
