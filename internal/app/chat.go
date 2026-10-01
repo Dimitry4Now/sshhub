@@ -96,6 +96,7 @@ func (s *chatScreen) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (s *chatScreen) View(width, height int) string {
+	t := theme(s.sess)
 	sideW := sidebarWidth
 	if width < 60 {
 		sideW = 0
@@ -104,9 +105,9 @@ func (s *chatScreen) View(width, height int) string {
 	s.input.SetWidth(max(mainW-4, 10))
 
 	// Input area: rule, input line, optional note.
-	bottom := dimStyle.Render(strings.Repeat("─", mainW)) + "\n" + s.input.View()
+	bottom := t.dim.Render(strings.Repeat("─", mainW)) + "\n" + s.input.View()
 	if s.note != "" {
-		bottom += "  " + badStyle.Render(s.note)
+		bottom += "  " + t.bad.Render(s.note)
 	}
 	logH := max(height-lipgloss.Height(bottom), 1)
 
@@ -120,7 +121,7 @@ func (s *chatScreen) View(width, height int) string {
 		log = strings.Join(lines[len(lines)-logH:], "\n")
 	}
 	if log == "" {
-		log = dimStyle.Render("It's quiet in here. Say hi!")
+		log = t.dim.Render("It's quiet in here. Say hi!")
 	}
 	log = lipgloss.NewStyle().Width(mainW).Height(logH).AlignVertical(lipgloss.Bottom).Render(log)
 
@@ -132,30 +133,32 @@ func (s *chatScreen) View(width, height int) string {
 }
 
 func (s *chatScreen) renderLine(m hub.Message, width int) string {
-	ts := dimStyle.Render(m.Time.Format("15:04") + " ")
+	t := theme(s.sess)
+	ts := t.dim.Render(m.Time.Format("15:04") + " ")
 	if m.System {
-		return lipgloss.NewStyle().Width(width).Render(ts + dimStyle.Italic(true).Render("• "+m.Nick+" "+m.Text))
+		return lipgloss.NewStyle().Width(width).Render(ts + t.dim.Italic(true).Render("• "+m.Nick+" "+m.Text))
 	}
 	name := lipgloss.NewStyle().Bold(true).Foreground(nickColor(m.Nick)).Render(m.Nick)
 	return lipgloss.NewStyle().Width(width).Render(ts + name + " " + m.Text)
 }
 
 func (s *chatScreen) sidebar(width, height int) string {
+	t := theme(s.sess)
 	var b strings.Builder
-	b.WriteString(headingStyle.Render("Online") + dimStyle.Render(" ("+strconv.Itoa(len(s.online))+")") + "\n\n")
+	b.WriteString(t.heading.Render("Online") + t.dim.Render(" ("+strconv.Itoa(len(s.online))+")") + "\n\n")
 	for _, p := range s.online {
-		dot := dimStyle.Render("○ ")
+		dot := t.dim.Render("○ ")
 		if p.InChat {
-			dot = goodStyle.Render("● ")
+			dot = t.good.Render("● ")
 		}
 		name := lipgloss.NewStyle().Foreground(nickColor(p.Nick)).MaxWidth(width - 5).Render(p.Nick)
 		b.WriteString(dot + name + "\n")
 	}
-	b.WriteString("\n" + dimStyle.Render("● in chat ○ browsing"))
+	b.WriteString("\n" + t.dim.Render("● in chat ○ browsing"))
 	return lipgloss.NewStyle().
 		Width(width).Height(height).
 		Border(lipgloss.NormalBorder(), false, false, false, true).
-		BorderForeground(muted).
+		BorderForeground(t.muted).
 		Padding(0, 1).
 		Render(b.String())
 }

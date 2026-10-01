@@ -179,20 +179,14 @@ func (s *snakeScreen) turn(d point) {
 	}
 }
 
-var (
-	snakeHeadStyle = lipgloss.NewStyle().Foreground(accent2)
-	snakeBodyStyle = lipgloss.NewStyle().Foreground(accentL)
-	foodStyle      = lipgloss.NewStyle().Foreground(bad)
-	boardStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent).PaddingRight(1)
-)
-
 func (s *snakeScreen) View(width, height int) string {
-	cells := map[point]string{s.food: foodStyle.Render(" ●")}
+	t := theme(s.sess)
+	cells := map[point]string{s.food: t.food.Render(" ●")}
 	for i, p := range s.body {
 		if i == 0 {
-			cells[p] = snakeHeadStyle.Render("██")
+			cells[p] = t.snakeHead.Render("██")
 		} else {
-			cells[p] = snakeBodyStyle.Render("▓▓")
+			cells[p] = t.snakeBody.Render("▓▓")
 		}
 	}
 	var grid strings.Builder
@@ -201,7 +195,7 @@ func (s *snakeScreen) View(width, height int) string {
 			if c, ok := cells[point{x, y}]; ok {
 				grid.WriteString(c)
 			} else {
-				grid.WriteString(dimStyle.Render(" ·"))
+				grid.WriteString(t.dim.Render(" ·"))
 			}
 		}
 		if y < snakeRows-1 {
@@ -209,16 +203,16 @@ func (s *snakeScreen) View(width, height int) string {
 		}
 	}
 
-	status := headingStyle.Render("Snake") + "   " + selectedStyle.Render(fmt.Sprintf("score %d", s.score()))
+	status := t.heading.Render("Snake") + "   " + t.selected.Render(fmt.Sprintf("score %d", s.score()))
 	switch {
 	case s.over:
-		status += "   " + badStyle.Render("game over")
+		status += "   " + t.bad.Render("game over")
 	case s.paused:
-		status += "   " + dimStyle.Render("paused")
+		status += "   " + t.dim.Render("paused")
 	}
-	out := lipgloss.JoinVertical(lipgloss.Center, status, "", boardStyle.Render(grid.String()))
+	out := lipgloss.JoinVertical(lipgloss.Center, status, "", t.board.Render(grid.String()))
 	if s.over && s.saveMsg != "" {
-		out = lipgloss.JoinVertical(lipgloss.Center, out, "", dimStyle.Render(s.saveMsg))
+		out = lipgloss.JoinVertical(lipgloss.Center, out, "", t.dim.Render(s.saveMsg))
 	}
 	return out
 }

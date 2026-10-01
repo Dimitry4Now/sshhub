@@ -48,11 +48,14 @@ func LoadMemes(fsys fs.FS, dir string) ([]Meme, error) {
 }
 
 type memesScreen struct {
+	sess  *Session
 	memes []Meme
 	idx   int
 }
 
-func newMemes(deps *Deps) *memesScreen { return &memesScreen{memes: deps.Memes} }
+func newMemes(deps *Deps, sess *Session) *memesScreen {
+	return &memesScreen{sess: sess, memes: deps.Memes}
+}
 
 func (s *memesScreen) Init() tea.Cmd { return nil }
 
@@ -78,19 +81,20 @@ func (s *memesScreen) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (s *memesScreen) View(width, height int) string {
+	t := theme(s.sess)
 	if len(s.memes) == 0 {
-		return boxStyle.Render("The gallery is empty.")
+		return t.box.Render("The gallery is empty.")
 	}
 	m := s.memes[s.idx]
-	title := headingStyle.Render(m.Title) + dimStyle.Render(fmt.Sprintf("  %d/%d", s.idx+1, len(s.memes)))
+	title := t.heading.Render(m.Title) + t.dim.Render(fmt.Sprintf("  %d/%d", s.idx+1, len(s.memes)))
 	// The frame takes 6 lines (border, padding, title, gap) and 8 columns.
 	maxH := max(height-6, 1)
 	art := lipgloss.NewStyle().MaxWidth(width - 8).MaxHeight(maxH).Render(m.Art)
 	if lipgloss.Height(m.Art) > maxH {
 		art = lipgloss.NewStyle().MaxWidth(width-8).MaxHeight(maxH-1).Render(m.Art) + "\n" +
-			dimStyle.Render("↕ make the window taller to see it all")
+			t.dim.Render("↕ make the window taller to see it all")
 	}
-	return boxStyle.Render(lipgloss.JoinVertical(lipgloss.Center, title, "", art))
+	return t.box.Render(lipgloss.JoinVertical(lipgloss.Center, title, "", art))
 }
 
 func (s *memesScreen) Help() string { return "←/→ browse · esc menu" }

@@ -205,29 +205,30 @@ func choiceIndex(k string) int {
 }
 
 func (s *triviaScreen) View(width, height int) string {
+	t := theme(s.sess)
 	w := min(64, width-2)
 	if len(s.questions) == 0 {
-		return boxStyle.Width(w).Render("No trivia questions loaded.")
+		return t.box.Width(w).Render("No trivia questions loaded.")
 	}
 	var b strings.Builder
 	if s.state == triviaDone {
-		b.WriteString(headingStyle.Render("Round over!") + "\n\n")
+		b.WriteString(t.heading.Render("Round over!") + "\n\n")
 		fmt.Fprintf(&b, "Correct: %d / %d\n", s.correct, len(s.questions))
-		fmt.Fprintf(&b, "Score:   %s\n\n", selectedStyle.Render(fmt.Sprint(s.score)))
-		b.WriteString(dimStyle.Render(s.saveMsg))
-		return boxStyle.Width(w).Render(b.String())
+		fmt.Fprintf(&b, "Score:   %s\n\n", t.selected.Render(fmt.Sprint(s.score)))
+		b.WriteString(t.dim.Render(s.saveMsg))
+		return t.box.Width(w).Render(b.String())
 	}
 
 	q := s.questions[s.idx]
 	timer := fmt.Sprintf("⏱ %2ds", int(s.left.Round(time.Second)/time.Second))
 	if s.left <= 5*time.Second {
-		timer = badStyle.Render(timer)
+		timer = t.bad.Render(timer)
 	} else {
-		timer = selectedStyle.Render(timer)
+		timer = t.selected.Render(timer)
 	}
 	fmt.Fprintf(&b, "%s   %s   %s\n\n",
-		headingStyle.Render(fmt.Sprintf("Question %d/%d", s.idx+1, len(s.questions))),
-		dimStyle.Render(fmt.Sprintf("score %d", s.score)), timer)
+		t.heading.Render(fmt.Sprintf("Question %d/%d", s.idx+1, len(s.questions))),
+		t.dim.Render(fmt.Sprintf("score %d", s.score)), timer)
 	b.WriteString(q.Q + "\n\n")
 
 	// Wrap long choices with a hanging indent under the text, not the marker.
@@ -238,11 +239,11 @@ func (s *triviaScreen) View(width, height int) string {
 		label := fmt.Sprintf("%c) %s", 'a'+i, strings.ReplaceAll(wrapped, "\n", "\n     "))
 		switch {
 		case s.state == triviaReveal && i == q.Answer:
-			b.WriteString(goodStyle.Render("✔ " + label))
+			b.WriteString(t.good.Render("✔ " + label))
 		case s.state == triviaReveal && i == s.picked:
-			b.WriteString(badStyle.Render("✘ " + label))
+			b.WriteString(t.bad.Render("✘ " + label))
 		case s.state == triviaAsking && i == s.cursor:
-			b.WriteString(selectedStyle.Render("▸ " + label))
+			b.WriteString(t.selected.Render("▸ " + label))
 		default:
 			b.WriteString("  " + label)
 		}
@@ -253,14 +254,14 @@ func (s *triviaScreen) View(width, height int) string {
 		b.WriteString("\n")
 		switch {
 		case s.picked == -1:
-			b.WriteString(badStyle.Render("Time's up!"))
+			b.WriteString(t.bad.Render("Time's up!"))
 		case s.picked == q.Answer:
-			b.WriteString(goodStyle.Render(fmt.Sprintf("Correct! +%d", points(true, s.left))))
+			b.WriteString(t.good.Render(fmt.Sprintf("Correct! +%d", points(true, s.left))))
 		default:
-			b.WriteString(badStyle.Render("Nope."))
+			b.WriteString(t.bad.Render("Nope."))
 		}
 	}
-	return boxStyle.Width(w).Render(strings.TrimRight(b.String(), "\n"))
+	return t.box.Width(w).Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (s *triviaScreen) Help() string {

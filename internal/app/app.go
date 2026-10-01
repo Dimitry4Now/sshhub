@@ -18,6 +18,7 @@ type Session struct {
 	Nick        string // empty until a key user picks one
 	Guest       bool   // logged in without a key; scores are not saved
 	HubID       int    // presence id in the shared hub
+	Theme       string // name of the chosen theme; empty means the default
 }
 
 // Deps are shared by every session.
@@ -114,15 +115,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) View() tea.View {
+	t := theme(m.sess)
 	if m.kicked {
-		msg := boxStyle.Render(headingStyle.Render("You connected from somewhere else") +
+		msg := t.box.Render(t.heading.Render("You connected from somewhere else") +
 			"\n\nOnly one session per person. This one is closing.")
 		v := tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
 		v.AltScreen = true
 		return v
 	}
 	header := m.header()
-	footer := helpStyle.Render(m.screen.Help())
+	footer := t.help.Render(m.screen.Help())
 	bodyHeight := max(m.height-lipgloss.Height(header)-lipgloss.Height(footer), 1)
 	body := lipgloss.Place(m.width, bodyHeight, lipgloss.Center, lipgloss.Center,
 		m.screen.View(m.width, bodyHeight))
@@ -134,6 +136,7 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) header() string {
+	t := theme(m.sess)
 	who := m.sess.Nick
 	if who == "" {
 		who = "new user"
@@ -141,9 +144,9 @@ func (m *Model) header() string {
 	if m.sess.Guest {
 		who += " (guest)"
 	}
-	left := titleStyle.Render(" ▓ SSH HUB ")
-	mid := dimStyle.Render(fmt.Sprintf("%s · %d online", who, m.deps.Hub.Count()))
-	right := clockStyle.Render(m.now.Format("Mon 02 Jan  15:04:05 MST"))
+	left := t.title.Render(" ▓ SSH HUB ")
+	mid := t.dim.Render(fmt.Sprintf("%s · %d online", who, m.deps.Hub.Count()))
+	right := t.clock.Render(m.now.Format("Mon 02 Jan  15:04:05 MST"))
 
 	gap := m.width - lipgloss.Width(left) - lipgloss.Width(mid) - lipgloss.Width(right)
 	if gap < 2 {
@@ -152,7 +155,7 @@ func (m *Model) header() string {
 	}
 	lgap := gap / 2
 	line := left + spaces(lgap) + mid + spaces(gap-lgap) + right
-	return headerStyle.Width(m.width).Render(line)
+	return t.header.Width(m.width).Render(line)
 }
 
 func spaces(n int) string {

@@ -70,14 +70,15 @@ func (s *nickScreen) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (s *nickScreen) View(width, height int) string {
+	t := theme(s.sess)
 	var b strings.Builder
-	b.WriteString(headingStyle.Render("Hey, new face!") + "\n\n")
+	b.WriteString(t.heading.Render("Hey, new face!") + "\n\n")
 	b.WriteString("Pick a nickname. It's tied to your SSH key,\nso next time you'll be recognized automatically.\n\n")
 	b.WriteString(s.input.View())
 	if s.err != "" {
-		b.WriteString("\n\n" + badStyle.Render(s.err))
+		b.WriteString("\n\n" + t.bad.Render(s.err))
 	}
-	return boxStyle.Width(min(56, width-2)).Render(b.String())
+	return t.box.Width(min(56, width-2)).Render(b.String())
 }
 
 func (s *nickScreen) Help() string { return "enter confirm · esc leave" }

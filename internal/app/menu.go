@@ -15,16 +15,17 @@ type menuItem struct {
 }
 
 type menuScreen struct {
+	sess   *Session
 	items  []menuItem
 	cursor int
 }
 
 func newMenu(deps *Deps, sess *Session) *menuScreen {
-	return &menuScreen{items: []menuItem{
+	return &menuScreen{sess: sess, items: []menuItem{
 		{"Trivia", "10 questions, beat the clock", func() screen { return newTrivia(deps, sess) }},
 		{"Snake", "the classic, now over SSH", func() screen { return newSnake(deps, sess) }},
 		{"Chat lobby", "talk to whoever's around", func() screen { return newChat(deps, sess) }},
-		{"Meme gallery", "curated terminal art", func() screen { return newMemes(deps) }},
+		{"Meme gallery", "curated terminal art", func() screen { return newMemes(deps, sess) }},
 		{"Leaderboard", "hall of fame", func() screen { return newLeaderboard(deps, sess) }},
 		{"Quit", "see you around", nil},
 	}}
@@ -72,37 +73,35 @@ var logo = []string{
 	"╚══════╝╚══════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ",
 }
 
-// logoGradient fades from racing green to lime, one color per logo row.
-var logoGradient = []string{"#00665E", "#00857C", "#00A19B", "#6FBF4A", "#A5CE1F", "#CEDC00"}
-
-func renderLogo() string {
+func renderLogo(t *styles) string {
 	rows := make([]string, len(logo))
 	for i, row := range logo {
-		rows[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(logoGradient[i])).Render(row)
+		rows[i] = t.logo[i].Render(row)
 	}
 	return strings.Join(rows, "\n")
 }
 
 func (s *menuScreen) View(width, height int) string {
+	t := theme(s.sess)
 	var b strings.Builder
 	for i, it := range s.items {
 		num := " " + strconv.Itoa(i+1) + " "
 		if i == s.cursor {
-			b.WriteString(selectedStyle.Render("┃ "+num+" "+it.title) + "\n")
-			b.WriteString(selectedStyle.Render("┃ ") + "     " + it.desc + "\n")
+			b.WriteString(t.selected.Render("┃ "+num+" "+it.title) + "\n")
+			b.WriteString(t.selected.Render("┃ ") + "     " + it.desc + "\n")
 		} else {
-			b.WriteString("  " + dimStyle.Render(num) + " " + it.title + "\n")
-			b.WriteString("       " + dimStyle.Render(it.desc) + "\n")
+			b.WriteString("  " + t.dim.Render(num) + " " + it.title + "\n")
+			b.WriteString("       " + t.dim.Render(it.desc) + "\n")
 		}
 		if i < len(s.items)-1 {
 			b.WriteString("\n")
 		}
 	}
-	menu := boxStyle.Padding(1, 4).Width(min(60, width-2)).Render(strings.TrimRight(b.String(), "\n"))
+	menu := t.box.Padding(1, 4).Width(min(60, width-2)).Render(strings.TrimRight(b.String(), "\n"))
 
 	// Show the big logo only when it fits above the menu.
 	if width >= lipgloss.Width(logo[0])+2 && height >= lipgloss.Height(menu)+len(logo)+2 {
-		return lipgloss.JoinVertical(lipgloss.Center, renderLogo(), "", menu)
+		return lipgloss.JoinVertical(lipgloss.Center, renderLogo(t), "", menu)
 	}
 	return menu
 }
