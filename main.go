@@ -106,11 +106,11 @@ func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
 		if key := s.PublicKey(); key != nil {
 			sess.Fingerprint = gossh.FingerprintSHA256(key)
 			identity = "key:" + sess.Fingerprint
-			nick, err := deps.Store.Nick(sess.Fingerprint)
+			profile, _, err := deps.Store.Profile(sess.Fingerprint)
 			if err != nil {
-				log.Error("lookup nick", "err", err)
+				log.Error("load profile", "err", err)
 			}
-			sess.Nick = nick
+			sess.Nick, sess.Theme = profile.Nick, profile.Theme
 		} else {
 			sess.Guest = true
 			sess.Nick = guestNameRe.ReplaceAllString(s.User(), "")
