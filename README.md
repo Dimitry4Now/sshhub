@@ -23,7 +23,7 @@ A hangout spot you reach over SSH: trivia, snake, a chat lobby with an online li
     <td width="50%"><b>Settings</b> — pick a theme, change your nickname, or wipe your scores (asks first).<br><br><img src="docs/screenshots/settings.png" alt="Settings screen previewing the Papaya theme"></td>
     <td width="50%"><b>Themes</b> — six color schemes, saved with your profile:<br><br>
       <b>Racing Green</b> (default) · <b>Rosso Corsa</b> · <b>Papaya</b> · <b>Silver</b> · <b>Midnight</b> · <b>Racing Blue</b><br><br>
-      <sub>Inspired by the historic national racing colors and motorsport color traditions. Not affiliated with any team or with Formula 1.</sub></td>
+      <sub>Inspired by the historic national racing colors and motorsport color traditions.</sub></td>
   </tr>
 </table>
 
