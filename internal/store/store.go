@@ -45,6 +45,20 @@ CREATE INDEX IF NOT EXISTS scores_game ON scores(game, points DESC);
 // migrations upgrade older databases; migrations[i] moves user_version i to i+1.
 var migrations = []string{
 	`ALTER TABLE users ADD COLUMN theme TEXT NOT NULL DEFAULT ''`,
+	`CREATE TABLE messages (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		nick       TEXT NOT NULL,
+		text       TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	)`,
+}
+
+// Message is one saved line of the chat lobby. Nick is the name as it was
+// shown when the message was posted.
+type Message struct {
+	Time time.Time
+	Nick string
+	Text string
 }
 
 // Profile is a registered user's saved data.
@@ -177,6 +191,36 @@ func (s *Store) Top(game string, limit int) ([]Score, error) {
 			return nil, err
 		}
 		out = append(out, sc)
+	}
+	return out, rows.Err()
+}
+
+// SaveMessage records one chat message.
+func (s *Store) SaveMessage(m Message) error {
+	_, err := s.db.Exec(`INSERT INTO messages (nick, text, created_at) VALUES (?, ?, ?)`,
+		m.Nick, m.Text, m.Time.Unix())
+	return err
+}
+
+// RecentMessages returns the newest chat messages, oldest first.
+func (s *Store) RecentMessages(limit int) ([]Message, error) {
+	rows, err := s.db.Query(`
+		SELECT nick, text, created_at FROM (
+			SELECT id, nick, text, created_at FROM messages ORDER BY id DESC LIMIT ?
+		) ORDER BY id ASC`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Message
+	for rows.Next() {
+		var m Message
+		var ts int64
+		if err := rows.Scan(&m.Nick, &m.Text, &ts); err != nil {
+			return nil, err
+		}
+		m.Time = time.Unix(ts, 0)
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func open(t *testing.T) *Store {
@@ -116,4 +117,28 @@ func TestMigratesOldDatabase(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	st2.Close()
+}
+
+func TestRecentMessages(t *testing.T) {
+	st := open(t)
+	if msgs, err := st.RecentMessages(10); err != nil || len(msgs) != 0 {
+		t.Fatalf("empty: %v %v", msgs, err)
+	}
+	start := time.Unix(1_700_000_000, 0)
+	for i, text := range []string{"one", "two", "three", "four"} {
+		m := Message{Time: start.Add(time.Duration(i) * time.Minute), Nick: "ada", Text: text}
+		if err := st.SaveMessage(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	msgs, err := st.RecentMessages(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 3 || msgs[0].Text != "two" || msgs[2].Text != "four" {
+		t.Fatalf("want the last three oldest first, got %+v", msgs)
+	}
+	if !msgs[2].Time.Equal(start.Add(3 * time.Minute)) {
+		t.Fatalf("time = %v", msgs[2].Time)
+	}
 }
