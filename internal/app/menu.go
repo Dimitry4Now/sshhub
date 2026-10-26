@@ -26,7 +26,7 @@ func newMenu(deps *Deps, sess *Session) *menuScreen {
 		{"Trivia", "10 questions, beat the clock", func() screen { return newTrivia(deps, sess) }},
 		{"Snake", "the classic, now over SSH", func() screen { return newSnake(deps, sess) }},
 		{"Chat lobby", "talk to whoever's around", func() screen { return newChat(deps, sess) }},
-		{"Meme gallery", "curated terminal art", func() screen { return newMemes(deps, sess) }},
+		{"Meme gallery", "ASCII art tech memes", func() screen { return newMemes(deps, sess) }},
 		{"Leaderboard", "hall of fame", func() screen { return newLeaderboard(deps, sess) }},
 		{"Settings", "theme, nickname, scores", func() screen { return newSettings(deps, sess) }},
 		{"Quit", "see you around", nil},
