@@ -16,7 +16,7 @@ A hangout spot you reach over SSH: trivia, snake, a chat lobby with an online li
     <td width="50%"><b>Snake</b> — the classic, over SSH. It speeds up with every apple.<br><br><img src="docs/screenshots/snake.png" alt="Snake game in progress"></td>
   </tr>
   <tr>
-    <td width="50%"><b>Meme gallery</b> — terminal art, browse with ←/→.<br><br><img src="docs/screenshots/memes.png" alt="Doge meme in the gallery"></td>
+    <td width="50%"><b>Meme gallery</b> — ASCII art tech memes, browse with ←/→.<br><br><img src="docs/screenshots/memes.png" alt="Doge meme in the gallery"></td>
     <td width="50%"><b>Leaderboard</b> — best score per player, one tab per game.<br><br><img src="docs/screenshots/leaderboard.png" alt="Trivia leaderboard"></td>
   </tr>
   <tr>
@@ -67,7 +67,7 @@ GitHub Actions checks formatting and runs `go vet`, the tests with the race dete
 ## Adding content
 
 - Trivia: edit `assets/questions.json` (`answer` is the index into `choices`; choices are shuffled at runtime).
-- Memes: drop `.txt` or `.ans` files into `assets/memes/`. A leading `NN-` sets the order. Images can be converted with e.g. `chafa --size 60x25 pic.png > assets/memes/07-pic.ans`.
+- Memes: drop `.txt` files of classic ASCII art into `assets/memes/`. A leading `NN-` sets the order. The tests keep them to plain ASCII and at most 70 columns by 20 lines.
 
 Assets are embedded, so rebuild after changes.
 

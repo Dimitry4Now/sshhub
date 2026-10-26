@@ -52,5 +52,12 @@ func TestMemes(t *testing.T) {
 		if h := lipgloss.Height(m.Art); h > 20 {
 			t.Errorf("%q is %d lines tall, max 20", m.Title, h)
 		}
+		// Classic ASCII art only: every terminal draws it the same width.
+		for i, r := range m.Art {
+			if r != '\n' && (r < ' ' || r > '~') {
+				t.Errorf("%q has non-ASCII %q at byte %d", m.Title, r, i)
+				break
+			}
+		}
 	}
 }

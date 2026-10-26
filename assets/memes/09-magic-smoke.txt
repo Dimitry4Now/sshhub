@@ -1,14 +1,16 @@
-               (  )   (   )  )
-                ) (   )  (  (
-                ( )  (    ) )
-               _____________
-              |  ┌───────┐  |
-              |  │ CHIP  │  |
-              |  └───────┘  |
-              |_____________|
-               | | | | | | |
+                    (    )   (
+                     )  (   ) )
+                    (    ) (   (
+                     '.  ( )  .'
+               _ _ _ _ _ _ _ _ _ _
+              | | | | | | | | | | |
+             .---------------------.
+             |o                    |
+             |      ATmega328P     |
+             '---------------------'
+              | | | | | | | | | | |
 
-   All electronics run on magic smoke.
-   Let the smoke out and they stop working.
+     All electronics run on magic smoke.
+     Let the smoke out and they stop working.
 
-        (checked polarity? no.)
+          (checked polarity? no.)

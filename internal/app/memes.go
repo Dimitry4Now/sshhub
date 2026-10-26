@@ -17,7 +17,7 @@ type Meme struct {
 	Art   string
 }
 
-// LoadMemes reads every .txt/.ans file in dir, sorted by filename.
+// LoadMemes reads every .txt file in dir, sorted by filename.
 // A leading "NN-" prefix orders files and is stripped from the title.
 func LoadMemes(fsys fs.FS, dir string) ([]Meme, error) {
 	entries, err := fs.ReadDir(fsys, dir)
@@ -28,7 +28,7 @@ func LoadMemes(fsys fs.FS, dir string) ([]Meme, error) {
 	var memes []Meme
 	for _, e := range entries {
 		ext := path.Ext(e.Name())
-		if e.IsDir() || (ext != ".txt" && ext != ".ans") {
+		if e.IsDir() || ext != ".txt" {
 			continue
 		}
 		data, err := fs.ReadFile(fsys, path.Join(dir, e.Name()))

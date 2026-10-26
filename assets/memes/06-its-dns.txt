@@ -1,7 +1,12 @@
+   It's not DNS.
+          There's no way it's DNS.
+                                       _.-----._
+                                     .'         '.
+                                     |   R.I.P   |
+                                     |           |
+                                     |  it was   |
+                                     |    DNS    |
+                                     |           |
+                              _______|___________|_______
 
-      ┌─────────────────────────────┐
-      │  It's not DNS               │
-      │  There's no way it's DNS    │
-      │  It was DNS                 │
-      └─────────────────────────────┘
-                  — haiku, every sysadmin
+                              -- haiku, every sysadmin

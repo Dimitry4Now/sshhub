@@ -1,9 +1,10 @@
    Student name:  Robert'); DROP TABLE students;--
-
-   School DB:     OK.
-
-   School DB:     ...
-
-   School DB:     where did everyone go?
-
+                                                    _.-----._
+   School DB:     OK.                             .-         -.
+                                                  |-_       _-|
+   School DB:     ...                             |  ~-----~  |
+                                                  |           |
+   School DB:     where did everyone go?          |  (empty)  |
+                                                  '._       _.'
+                                                     '-----'
         use parameterized queries, kids.
