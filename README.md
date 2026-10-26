@@ -35,7 +35,7 @@ go build -o sshhub .
 ssh -p 23234 localhost         # connect
 ```
 
-Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally), `-max-conns` and `-max-conns-per-ip` (connections open at once, 200 and 10 by default), `-version`.
+Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally), `-max-conns` and `-max-conns-per-ip` (connections open at once, 200 and 10 by default), `-admin-keys` (see Admin), `-backup DIR` with `-keep N` (snapshot the database and host key, then exit), `-version`.
 
 Everything that should outlive a restart lives in the SQLite database: profiles, scores, themes and the chat lobby's history (the last 100 messages are shown when you join). Stopping the server (Ctrl+C or SIGTERM) tells everyone connected that it's restarting and gives them a few seconds before closing.
 
@@ -53,12 +53,30 @@ The repo pins a newer Go toolchain in `go.mod`; with Go 1.21+ installed it is do
 `deploy/` runs the hub as a hardened systemd service on a Linux server (amd64 or arm64), with the database and host key in `/var/lib/sshhub`.
 
 ```sh
-deploy/deploy.sh --setup     # first time: service user, systemd unit, firewall rule, then deploy
-deploy/deploy.sh             # build the current checkout, install it, restart, check it answers
-deploy/deploy.sh --rollback  # back to the previous binary
+deploy/deploy.sh                    # prepare the server (user, units, firewall), build, install, restart, check it answers
+deploy/deploy.sh --rollback         # back to the previous binary
+deploy/deploy.sh --pull-backup      # back up now and copy the snapshot and host key to ./backups
+deploy/deploy.sh --restore FILE     # put a snapshot back (the replaced database is kept next to it)
+deploy/deploy.sh --add-admin [KEY]  # let a public key run admin commands (default ~/.ssh/id_ed25519.pub)
 ```
 
+Backups: a systemd timer snapshots the database every night (`VACUUM INTO`, safe while the hub runs), checks the copy's integrity, keeps the last 14 in `/var/lib/sshhub/backups`, and copies the host key next to them. Snapshots on the same disk don't survive losing the server, so pull one now and then.
+
 `HOST` picks the server (an SSH destination with sudo) and `PORT` the hub's port. On a cloud VM, the provider's firewall (for Oracle Cloud, the subnet's security list) must allow the port too. Logs: `journalctl -u sshhub -f`.
+
+## Admin
+
+Keys listed in the server's `/etc/sshhub/admin_keys` (authorized_keys format, owned by root) can run commands by connecting with one:
+
+```sh
+ssh -p 23234 dibe-ssh-hub.duckdns.org who                  # sessions: id, nick, where, how long, address
+ssh -p 23234 dibe-ssh-hub.duckdns.org kick 7               # or kick NICK
+ssh -p 23234 dibe-ssh-hub.duckdns.org broadcast restarting in 5 minutes
+ssh -p 23234 dibe-ssh-hub.duckdns.org stats                # version, uptime, sessions, memory
+ssh -p 23234 dibe-ssh-hub.duckdns.org audit                # the last admin commands
+```
+
+The file is read on every command, so adding or removing a key applies at once. Every command is recorded in the database before it runs, and refused if it can't be. Anyone else gets the same refusal whatever they type.
 
 ## CI
 
