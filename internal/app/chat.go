@@ -101,7 +101,7 @@ func (s *chatScreen) View(width, height int) string {
 	if width < 60 {
 		sideW = 0
 	}
-	mainW := width - sideW - 2
+	mainW := max(width-sideW-2, 1)
 	s.input.SetWidth(max(mainW-4, 10))
 
 	// Input area: rule, input line, optional note.

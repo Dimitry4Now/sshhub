@@ -139,3 +139,15 @@ func TestSettingsGuestLimits(t *testing.T) {
 		t.Fatal("guest couldn't change theme for the session")
 	}
 }
+
+// Tiny or zero-sized terminals must not crash any screen.
+func TestScreensSurviveTinyTerminals(t *testing.T) {
+	s, st, h := newTestSettings(t, false)
+	deps := &Deps{Store: st, Hub: h}
+	for _, sc := range []screen{newMenu(deps, s.sess), newChat(deps, s.sess), newSnake(deps, s.sess),
+		newTrivia(deps, s.sess), newLeaderboard(deps, s.sess), newMemes(deps, s.sess), s} {
+		for _, w := range []int{0, 1, 2, 5} {
+			sc.View(w, w)
+		}
+	}
+}
