@@ -35,7 +35,7 @@ go build -o sshhub .
 ssh -p 23234 localhost         # connect
 ```
 
-Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally), `-max-conns` and `-max-conns-per-ip` (connections open at once, 200 and 10 by default), `-admin-keys` (see Admin), `-backup DIR` with `-keep N` (snapshot the database and host key, then exit), `-version`.
+Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally), `-max-conns` and `-max-conns-per-ip` (connections open at once, 100 and 10 by default), `-admin-keys` (see Admin), `-backup DIR` with `-keep N` (snapshot the database and host key, then exit), `-version`.
 
 Everything that should outlive a restart lives in the SQLite database: profiles, scores, themes and the chat lobby's history (the last 100 messages are shown when you join). Stopping the server (Ctrl+C or SIGTERM) tells everyone connected that it's restarting and gives them a few seconds before closing.
 

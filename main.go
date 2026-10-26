@@ -39,7 +39,7 @@ func main() {
 	dbPath := flag.String("db", "hub.db", "SQLite database path")
 	hostKey := flag.String("hostkey", ".ssh/id_ed25519", "host key path (created if missing)")
 	dev := flag.Bool("dev", false, "allow several sessions per person (for local testing)")
-	maxConns := flag.Int("max-conns", 200, "most connections open at once")
+	maxConns := flag.Int("max-conns", 100, "most connections open at once")
 	maxConnsPerIP := flag.Int("max-conns-per-ip", 10, "most connections open at once from one address")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	backupDir := flag.String("backup", "", "snapshot the database and host key into this directory and exit")
