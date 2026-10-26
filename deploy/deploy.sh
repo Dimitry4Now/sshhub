@@ -52,14 +52,18 @@ deploy() {
   *) die "unsupported server architecture" ;;
   esac
 
+  tag=""
   if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
     echo "warning: deploying uncommitted changes (the version will say -dirty)" >&2
+  else
+    # A checkout of a release tag deploys as that release.
+    tag="$(git -C "$ROOT" describe --tags --exact-match --match 'v*' 2>/dev/null || true)"
   fi
 
-  echo "› building for linux/$arch"
+  echo "› building ${tag:-the current checkout} for linux/$arch"
   out="$(mktemp -d)"
   trap 'rm -rf "$out"' EXIT
-  (cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -o "$out/sshhub" .)
+  (cd "$ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-X main.release=$tag" -o "$out/sshhub" .)
 
   echo "› preparing the server"
   remote 'rm -rf /tmp/sshhub-units && mkdir /tmp/sshhub-units'
