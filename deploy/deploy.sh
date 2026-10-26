@@ -63,7 +63,7 @@ deploy() {
 
   echo "› preparing the server"
   remote 'rm -rf /tmp/sshhub-units && mkdir /tmp/sshhub-units'
-  scp -q "$ROOT"/deploy/*.service "$ROOT"/deploy/*.timer "$HOST:/tmp/sshhub-units/"
+  scp -q "$ROOT"/deploy/*.service "$ROOT"/deploy/*.timer "$ROOT/deploy/sshhub-install" "$HOST:/tmp/sshhub-units/"
   remote "sudo PORT=$PORT bash -s" < "$ROOT/deploy/setup.sh"
 
   echo "› installing"
