@@ -233,7 +233,13 @@ func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
 		// Signals are for the whole server (see main), not for each session.
 		opts := append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())
 		p := tea.NewProgram(app.New(deps, sess), opts...)
-		sess.HubID = deps.Hub.Connect(identity, sess.Nick, sess.Guest, func(r hub.KickReason) { p.Send(app.KickedMsg{Reason: r}) })
+		sess.HubID = deps.Hub.Connect(hub.Client{
+			Identity: identity,
+			Nick:     sess.Nick,
+			Guest:    sess.Guest,
+			Addr:     s.RemoteAddr().String(),
+			Kick:     func(r hub.KickReason) { p.Send(app.KickedMsg{Reason: r}) },
+		})
 		go func() {
 			<-s.Context().Done()
 			deps.Hub.Disconnect(sess.HubID)

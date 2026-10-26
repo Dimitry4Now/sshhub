@@ -22,8 +22,8 @@ func TestClean(t *testing.T) {
 
 func TestChatFlow(t *testing.T) {
 	h := New(nil)
-	a := h.Connect("", "alice", false, nil)
-	b := h.Connect("", "bob", true, nil)
+	a := h.Connect(Client{Nick: "alice"})
+	b := h.Connect(Client{Nick: "bob", Guest: true})
 	if h.Count() != 2 {
 		t.Fatalf("count = %d", h.Count())
 	}
@@ -63,16 +63,16 @@ func TestChatFlow(t *testing.T) {
 func TestOneSessionPerIdentity(t *testing.T) {
 	h := New(nil)
 	kicked := make(chan struct{})
-	first := h.Connect("key:abc", "alice", false, func(r KickReason) {
+	first := h.Connect(Client{Identity: "key:abc", Nick: "alice", Kick: func(r KickReason) {
 		if r != KickDuplicate {
 			t.Errorf("reason = %v", r)
 		}
 		close(kicked)
-	})
+	}})
 	_, sub := h.Join(first)
 	<-sub
 
-	second := h.Connect("key:abc", "alice", false, nil)
+	second := h.Connect(Client{Identity: "key:abc", Nick: "alice"})
 	<-kicked
 	if _, ok := <-sub; ok {
 		t.Fatal("old chat subscription not closed")
@@ -86,14 +86,14 @@ func TestOneSessionPerIdentity(t *testing.T) {
 	if h.Count() != 1 {
 		t.Fatalf("count = %d after stale disconnect", h.Count())
 	}
-	third := h.Connect("key:abc", "alice", false, nil)
+	third := h.Connect(Client{Identity: "key:abc", Nick: "alice"})
 	if h.Count() != 1 || third == second {
 		t.Fatalf("count = %d", h.Count())
 	}
 
 	// Empty identity allows duplicates.
-	h.Connect("", "dev", false, nil)
-	h.Connect("", "dev", false, nil)
+	h.Connect(Client{Nick: "dev"})
+	h.Connect(Client{Nick: "dev"})
 	if h.Count() != 3 {
 		t.Fatalf("count = %d, want 3", h.Count())
 	}
@@ -102,7 +102,7 @@ func TestOneSessionPerIdentity(t *testing.T) {
 func TestHistoryAndArchive(t *testing.T) {
 	old := []Message{{Nick: "ada", Text: "before the restart"}}
 	h := New(old)
-	a := h.Connect("", "alice", false, nil)
+	a := h.Connect(Client{Nick: "alice"})
 
 	history, sub := h.Join(a)
 	if len(history) != 1 || history[0].Text != "before the restart" {
@@ -133,7 +133,7 @@ func TestShutdownKicksEveryone(t *testing.T) {
 	h := New(nil)
 	kicked := make(chan KickReason, 2)
 	kick := func(r KickReason) { kicked <- r }
-	a := h.Connect("key:a", "alice", false, kick)
+	a := h.Connect(Client{Identity: "key:a", Nick: "alice", Kick: kick})
 	h.Shutdown()
 	if r := <-kicked; r != KickShutdown {
 		t.Fatalf("reason = %v", r)
@@ -147,9 +147,50 @@ func TestShutdownKicksEveryone(t *testing.T) {
 	<-h.Drained()
 
 	// A session that slips in during shutdown is told to leave too.
-	h.Connect("key:b", "bob", false, kick)
+	h.Connect(Client{Identity: "key:b", Nick: "bob", Kick: kick})
 	if r := <-kicked; r != KickShutdown {
 		t.Fatalf("late session reason = %v", r)
 	}
 	h.Shutdown() // twice is fine
+}
+
+func TestAdminKickAnnounceSessions(t *testing.T) {
+	h := New(nil)
+	kicked := make(chan KickReason, 1)
+	notified := make(chan string, 2)
+	notify := func(s string) { notified <- s }
+	a := h.Connect(Client{Identity: "key:a", Nick: "alice", Addr: "10.0.0.1:5000", Notify: notify})
+	b := h.Connect(Client{Nick: "bob", Guest: true, Kick: func(r KickReason) { kicked <- r }, Notify: notify})
+
+	sessions := h.Sessions()
+	if len(sessions) != 2 || sessions[0].ID != a || sessions[0].Addr != "10.0.0.1:5000" || sessions[1].Nick != "bob (guest)" {
+		t.Fatalf("sessions = %+v", sessions)
+	}
+
+	_, sub := h.Join(a)
+	<-sub
+	if n := h.Announce("restart in 5 minutes \x1b[2J"); n != 2 {
+		t.Fatalf("notified %d sessions", n)
+	}
+	for range 2 {
+		if got := <-notified; got != "restart in 5 minutes [2J" {
+			t.Fatalf("notice %q", got)
+		}
+	}
+	if msg := <-sub; !msg.System || msg.Nick != "admin:" {
+		t.Fatalf("chat got %+v", msg)
+	}
+	if h.Announce("  ") != 0 {
+		t.Fatal("empty announcement sent")
+	}
+
+	if !h.Kick(b) {
+		t.Fatal("kick failed")
+	}
+	if r := <-kicked; r != KickAdmin {
+		t.Fatalf("reason = %v", r)
+	}
+	if h.Count() != 1 || h.Kick(b) {
+		t.Fatal("kicked session still there")
+	}
 }

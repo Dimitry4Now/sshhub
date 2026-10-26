@@ -58,7 +58,7 @@ func newTestSettings(t *testing.T, guest bool) (*settingsScreen, *store.Store, *
 			t.Fatal(err)
 		}
 	}
-	sess.HubID = h.Connect("", sess.Nick, guest, nil)
+	sess.HubID = h.Connect(hub.Client{Nick: sess.Nick, Guest: guest})
 	return newSettings(&Deps{Store: st, Hub: h}, sess), st, h
 }
 
