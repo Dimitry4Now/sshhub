@@ -63,7 +63,12 @@ func TestChatFlow(t *testing.T) {
 func TestOneSessionPerIdentity(t *testing.T) {
 	h := New(nil)
 	kicked := make(chan struct{})
-	first := h.Connect("key:abc", "alice", false, func() { close(kicked) })
+	first := h.Connect("key:abc", "alice", false, func(r KickReason) {
+		if r != KickDuplicate {
+			t.Errorf("reason = %v", r)
+		}
+		close(kicked)
+	})
 	_, sub := h.Join(first)
 	<-sub
 
@@ -118,4 +123,33 @@ func TestHistoryAndArchive(t *testing.T) {
 		t.Fatal("nothing archived")
 	}
 
+	h.Shutdown()
+	if _, ok := <-h.Archive(); ok {
+		t.Fatal("archive not closed by shutdown")
+	}
+}
+
+func TestShutdownKicksEveryone(t *testing.T) {
+	h := New(nil)
+	kicked := make(chan KickReason, 2)
+	kick := func(r KickReason) { kicked <- r }
+	a := h.Connect("key:a", "alice", false, kick)
+	h.Shutdown()
+	if r := <-kicked; r != KickShutdown {
+		t.Fatalf("reason = %v", r)
+	}
+	select {
+	case <-h.Drained():
+		t.Fatal("drained while alice is still connected")
+	default:
+	}
+	h.Disconnect(a)
+	<-h.Drained()
+
+	// A session that slips in during shutdown is told to leave too.
+	h.Connect("key:b", "bob", false, kick)
+	if r := <-kicked; r != KickShutdown {
+		t.Fatalf("late session reason = %v", r)
+	}
+	h.Shutdown() // twice is fine
 }

@@ -52,8 +52,11 @@ func main() {
 	}
 	h := hub.New(history)
 
-	// Save chat messages as they're posted, off the chat's hot path.
+	// Save chat messages as they're posted, off the chat's hot path. The loop
+	// ends when the hub shuts down and closes the archive.
+	archived := make(chan struct{})
 	go func() {
+		defer close(archived)
 		for m := range h.Archive() {
 			if err := st.SaveMessage(store.Message{Time: m.Time, Nick: m.Nick, Text: m.Text}); err != nil {
 				log.Error("save chat message", "err", err)
@@ -108,12 +111,23 @@ func main() {
 	}()
 	<-ctx.Done()
 
-	log.Info("shutting down")
+	// Tell every session we're restarting and give them a moment to show it
+	// and quit on their own; closing the server cuts the rest off. Then let
+	// the archive finish before the database closes.
+	log.Info("shutting down", "sessions", h.Count())
+	h.Shutdown()
+	select {
+	case <-h.Drained():
+	case <-time.After(5 * time.Second):
+		log.Warn("sessions still open after grace period", "sessions", h.Count())
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		log.Error("shutdown", "err", err)
 	}
+	<-archived
+	log.Info("stopped")
 }
 
 var guestNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
@@ -151,7 +165,7 @@ func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
 		// Signals are for the whole server (see main), not for each session.
 		opts := append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())
 		p := tea.NewProgram(app.New(deps, sess), opts...)
-		sess.HubID = deps.Hub.Connect(identity, sess.Nick, sess.Guest, func() { p.Send(app.KickedMsg{}) })
+		sess.HubID = deps.Hub.Connect(identity, sess.Nick, sess.Guest, func(r hub.KickReason) { p.Send(app.KickedMsg{Reason: r}) })
 		go func() {
 			<-s.Context().Done()
 			deps.Hub.Disconnect(sess.HubID)

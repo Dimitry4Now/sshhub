@@ -16,6 +16,16 @@ const (
 	archiveBuffer = 256
 )
 
+// KickReason says why the hub asked a session to close.
+type KickReason int
+
+const (
+	// KickDuplicate: the same person connected again elsewhere.
+	KickDuplicate KickReason = iota
+	// KickShutdown: the server is going down.
+	KickShutdown
+)
+
 // Message is one chat line. System messages announce joins and leaves.
 type Message struct {
 	Time   time.Time
@@ -28,7 +38,7 @@ type member struct {
 	nick     string
 	guest    bool
 	identity string
-	kick     func()
+	kick     func(KickReason)
 	sub      chan Message // non-nil while the member is in the chat lobby
 	lastTx   time.Time
 }
@@ -41,6 +51,8 @@ type Hub struct {
 	identities map[string]int // identity -> session id, for one session per person
 	history    []Message
 	archive    chan Message
+	closed     bool
+	drained    chan struct{} // closed once shut down and every session has left
 }
 
 // New creates a hub whose chat starts with history (oldest first), such as
@@ -54,13 +66,46 @@ func New(history []Message) *Hub {
 		identities: map[string]int{},
 		history:    append([]Message(nil), history...),
 		archive:    make(chan Message, archiveBuffer),
+		drained:    make(chan struct{}),
 	}
 }
 
 // Archive delivers every chat message people post (not join/leave notices),
 // so they can be saved. If nobody keeps up, messages are dropped rather than
-// stalling the chat.
+// stalling the chat. The channel is closed by Shutdown.
 func (h *Hub) Archive() <-chan Message { return h.archive }
+
+// Shutdown asks every session to close and stops archiving. Sessions that
+// connect afterwards are asked to close straight away.
+func (h *Hub) Shutdown() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return
+	}
+	h.closed = true
+	close(h.archive)
+	for _, m := range h.members {
+		if m.kick != nil {
+			go m.kick(KickShutdown)
+		}
+	}
+	h.checkDrainedLocked()
+}
+
+// Drained is closed once Shutdown was called and every session has left.
+func (h *Hub) Drained() <-chan struct{} { return h.drained }
+
+func (h *Hub) checkDrainedLocked() {
+	if !h.closed || len(h.members) > 0 {
+		return
+	}
+	select {
+	case <-h.drained:
+	default:
+		close(h.drained)
+	}
+}
 
 // Connect registers a session and returns its id.
 //
@@ -68,12 +113,15 @@ func (h *Hub) Archive() <-chan Message { return h.archive }
 // If another session with the same identity exists, it is removed from the hub
 // and its kick function is called so it can close. An empty identity allows
 // any number of sessions.
-func (h *Hub) Connect(identity, nick string, guest bool, kick func()) int {
+func (h *Hub) Connect(identity, nick string, guest bool, kick func(KickReason)) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.closed && kick != nil {
+		go kick(KickShutdown)
+	}
 	if old, ok := h.identities[identity]; ok && identity != "" {
 		if m := h.members[old]; m != nil && m.kick != nil {
-			go m.kick()
+			go m.kick(KickDuplicate)
 		}
 		h.removeLocked(old)
 	}
@@ -102,6 +150,7 @@ func (h *Hub) removeLocked(id int) {
 		delete(h.identities, m.identity)
 	}
 	delete(h.members, id)
+	h.checkDrainedLocked()
 }
 
 // SetNick updates a session's nickname (after first-time registration).
@@ -203,7 +252,7 @@ func (h *Hub) broadcastLocked(msg Message) {
 	if len(h.history) > historySize {
 		h.history = h.history[len(h.history)-historySize:]
 	}
-	if !msg.System {
+	if !msg.System && !h.closed {
 		select {
 		case h.archive <- msg:
 		default: // storage is stuck; keep the chat going

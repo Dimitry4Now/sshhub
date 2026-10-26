@@ -51,8 +51,9 @@ func switchTo(s screen) tea.Cmd { return func() tea.Msg { return switchMsg{to: s
 
 func back() tea.Msg { return backMsg{} }
 
-// KickedMsg tells a session that the same person connected again elsewhere.
-type KickedMsg struct{}
+// KickedMsg tells a session to close, because the same person connected again
+// elsewhere or the server is shutting down.
+type KickedMsg struct{ Reason hub.KickReason }
 
 // Model is the root Bubble Tea model for one SSH session.
 type Model struct {
@@ -63,7 +64,7 @@ type Model struct {
 	now    time.Time
 	menu   *menuScreen
 	screen screen
-	kicked bool
+	kicked *KickedMsg
 }
 
 // New builds the root model for a session.
@@ -90,10 +91,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case KickedMsg:
-		m.kicked = true
+		m.kicked = &msg
 		return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return tea.QuitMsg{} })
 	}
-	if m.kicked {
+	if m.kicked != nil {
 		if _, ok := msg.(tea.KeyPressMsg); ok {
 			return m, tea.Quit
 		}
@@ -119,9 +120,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) View() tea.View {
 	t := theme(m.sess)
-	if m.kicked {
-		msg := t.box.Render(t.heading.Render("You connected from somewhere else") +
-			"\n\nOnly one session per person. This one is closing.")
+	if m.kicked != nil {
+		title, body := "You connected from somewhere else", "Only one session per person. This one is closing."
+		if m.kicked.Reason == hub.KickShutdown {
+			title, body = "The hub is restarting", "Your scores are saved. Reconnect in a few seconds."
+		}
+		msg := t.box.Render(t.heading.Render(title) + "\n\n" + body)
 		v := tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
 		v.AltScreen = true
 		return v
