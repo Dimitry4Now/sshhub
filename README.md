@@ -78,9 +78,15 @@ ssh -p 23234 dibe-ssh-hub.duckdns.org audit                # the last admin comm
 
 The file is read on every command, so adding or removing a key applies at once. Every command is recorded in the database before it runs, and refused if it can't be. Anyone else gets the same refusal whatever they type.
 
-## CI
+## Workflow
 
-GitHub Actions checks formatting and runs `go vet`, the tests with the race detector, staticcheck and govulncheck, and cross-compiles for the server. To get a Telegram message when a run fails, create a bot with @BotFather and add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as repository secrets.
+- Work on a branch and open a pull request into `develop`. CI checks it: formatting, `go vet`, tests with the race detector, staticcheck, govulncheck, and builds for the server. It has to pass and be up to date with `develop` before it can merge.
+- To release, open a pull request from `develop` into `master` and merge it with a merge commit. Merging deploys to production.
+- Nobody pushes to `develop` or `master` directly, force-pushes or deletes them (repository rulesets). `master` takes pull requests from `develop` only (the `release source` check).
+
+The deploy job builds the binary and pipes it over SSH to the server as the `deploy` user. That user's key can do one thing: run `sshhub-install`, which accepts only an executable for the server's architecture, keeps the previous binary, restarts the hub, and rolls back if it doesn't start listening. The key is a secret of the `production` environment, which only `master` can use, and the server's host key is pinned. `deploy/ci-key.sh` creates or rotates the key. `deploy/deploy.sh` stays for server setup changes (units, firewall) and manual deploys.
+
+To get a Telegram message when CI fails or a deploy finishes, create a bot with @BotFather and add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as repository secrets.
 
 ## Adding content
 
