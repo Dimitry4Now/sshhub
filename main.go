@@ -179,9 +179,22 @@ func main() {
 	log.Info("stopped")
 }
 
-// version describes the build from the VCS info Go embeds: the commit, its
-// date, and "-dirty" when built with uncommitted changes.
+// release is the release tag of the build, set by the deploy:
+// go build -ldflags "-X main.release=v1.2.3"
+var release string
+
+// version describes the build: the release tag if there is one, then the VCS
+// info Go embeds: the commit, its date, and "-dirty" when built with
+// uncommitted changes.
 func version() string {
+	v := commit()
+	if release != "" {
+		v = release + " · " + v
+	}
+	return v
+}
+
+func commit() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "unknown"
