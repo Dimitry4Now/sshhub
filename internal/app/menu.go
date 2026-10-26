@@ -15,13 +15,14 @@ type menuItem struct {
 }
 
 type menuScreen struct {
+	deps   *Deps
 	sess   *Session
 	items  []menuItem
 	cursor int
 }
 
 func newMenu(deps *Deps, sess *Session) *menuScreen {
-	return &menuScreen{sess: sess, items: []menuItem{
+	return &menuScreen{deps: deps, sess: sess, items: []menuItem{
 		{"Trivia", "10 questions, beat the clock", func() screen { return newTrivia(deps, sess) }},
 		{"Snake", "the classic, now over SSH", func() screen { return newSnake(deps, sess) }},
 		{"Chat lobby", "talk to whoever's around", func() screen { return newChat(deps, sess) }},
@@ -87,6 +88,9 @@ func (s *menuScreen) View(width, height int) string {
 	menu := s.render(t, width, false)
 	if lipgloss.Height(menu) > height {
 		menu = s.render(t, width, true) // small terminal: one line per item
+	}
+	if v := s.deps.Version; v != "" && lipgloss.Height(menu) < height {
+		menu = lipgloss.JoinVertical(lipgloss.Center, menu, t.dim.Render(v))
 	}
 
 	// Show the big logo only when it fits above the menu.

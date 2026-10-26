@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"regexp"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -37,7 +39,13 @@ func main() {
 	dev := flag.Bool("dev", false, "allow several sessions per person (for local testing)")
 	maxConns := flag.Int("max-conns", 200, "most connections open at once")
 	maxConnsPerIP := flag.Int("max-conns-per-ip", 10, "most connections open at once from one address")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version())
+		return
+	}
 
 	st, err := store.Open(*dbPath)
 	if err != nil {
@@ -81,6 +89,7 @@ func main() {
 		Hub:       h,
 		Questions: questions,
 		Memes:     memes,
+		Version:   version(),
 	}
 
 	conns := limit.NewConns(*maxConns, *maxConnsPerIP)
@@ -115,7 +124,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Info("starting ssh hub", "addr", *addr)
+		log.Info("starting ssh hub", "addr", *addr, "version", version())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 			log.Error("server stopped", "err", err)
 			stop()
@@ -140,6 +149,38 @@ func main() {
 	}
 	<-archived
 	log.Info("stopped")
+}
+
+// version describes the build from the VCS info Go embeds: the commit, its
+// date, and "-dirty" when built with uncommitted changes.
+func version() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	var rev, at string
+	dirty := false
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.time":
+			at = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return info.Main.Version
+	}
+	v := rev[:min(len(rev), 7)]
+	if dirty {
+		v += "-dirty"
+	}
+	if t, err := time.Parse(time.RFC3339, at); err == nil {
+		v += " (" + t.Format("2006-01-02") + ")"
+	}
+	return v
 }
 
 var guestNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)

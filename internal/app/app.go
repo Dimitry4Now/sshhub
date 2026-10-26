@@ -27,6 +27,7 @@ type Deps struct {
 	Hub       *hub.Hub
 	Questions []Question
 	Memes     []Meme
+	Version   string // build version, shown under the menu
 }
 
 // screen is one page of the hub (menu, trivia, ...).
