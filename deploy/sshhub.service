@@ -23,8 +23,12 @@ RestartSec=2s
 # Sessions get a few seconds to see the restart notice before the server closes.
 TimeoutStopSec=20s
 
-# Resource limits: a busy hub stays well under these.
-MemoryMax=512M
+# Resource limits. The worst case, every allowed connection (-max-conns 100)
+# with the biggest terminal the hub draws (300x100 cells), peaked at about
+# 1.1 GB. GOMEMLIMIT makes the Go runtime collect garbage harder as it nears
+# the limit instead of being killed at it.
+Environment=GOMEMLIMIT=1280MiB
+MemoryMax=1536M
 TasksMax=512
 LimitNOFILE=4096
 
