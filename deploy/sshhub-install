@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Installs a new sshhub binary read from stdin, restarts the service, and
+# rolls back if the new version doesn't come up.
+#
+# This is all CI's deploy key can do: its line in the deploy user's
+# authorized_keys forces this command, and sudoers allows only this script.
+# Installed to /usr/local/sbin by setup.sh.
+set -euo pipefail
+
+BIN=/usr/local/bin/sshhub
+PORT=23234
+
+fail() { echo "sshhub-install: $*" >&2; exit 1; }
+
+# One deploy at a time.
+exec 9>/run/sshhub-install.lock
+flock 9
+
+new="$(mktemp /usr/local/bin/.sshhub-new.XXXXXX)"
+trap 'rm -f "$new"' EXIT
+# A build is around 15 MiB; anything far bigger is not one.
+head -c $((64 << 20)) > "$new"
+
+# Accept only an ELF executable for this machine: CI ships a binary, never a
+# script for root to run.
+[ "$(od -An -tx1 -N4 "$new" | tr -d ' \n')" = "7f454c46" ] || fail "not an ELF binary"
+case "$(uname -m)" in
+aarch64) want=183 ;;
+x86_64) want=62 ;;
+*) fail "unknown architecture $(uname -m)" ;;
+esac
+[ "$(od -An -tu2 -j18 -N2 "$new" | tr -d ' ')" = "$want" ] || fail "binary is for another architecture"
+
+chmod 0755 "$new"
+if [ -f "$BIN" ]; then cp -p "$BIN" "$BIN.prev"; fi
+mv "$new" "$BIN"
+since="$(date '+%Y-%m-%d %H:%M:%S')"
+systemctl restart sshhub
+
+healthy() {
+  for _ in $(seq 30); do
+    if systemctl is-active --quiet sshhub && ss -ltnH "sport = :$PORT" | grep -q .; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
+if healthy; then
+  journalctl -u sshhub --since "$since" -g "starting ssh hub" -o cat --no-pager | tail -n 1
+  exit 0
+fi
+
+echo "sshhub-install: the new version didn't come up; rolling back" >&2
+journalctl -u sshhub --since "$since" -n 20 -o cat --no-pager >&2
+if [ -f "$BIN.prev" ]; then
+  cp -p "$BIN.prev" "$BIN"
+  systemctl restart sshhub
+fi
+exit 1
