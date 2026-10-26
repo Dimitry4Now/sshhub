@@ -42,6 +42,25 @@ func main() {
 	}
 	defer st.Close()
 
+	saved, err := st.RecentMessages(100)
+	if err != nil {
+		log.Fatal("load chat history", "err", err)
+	}
+	history := make([]hub.Message, len(saved))
+	for i, m := range saved {
+		history[i] = hub.Message{Time: m.Time, Nick: m.Nick, Text: m.Text}
+	}
+	h := hub.New(history)
+
+	// Save chat messages as they're posted, off the chat's hot path.
+	go func() {
+		for m := range h.Archive() {
+			if err := st.SaveMessage(store.Message{Time: m.Time, Nick: m.Nick, Text: m.Text}); err != nil {
+				log.Error("save chat message", "err", err)
+			}
+		}
+	}()
+
 	questions, err := app.LoadQuestions(assets.FS, "questions.json")
 	if err != nil {
 		log.Fatal("load questions", "err", err)
@@ -53,7 +72,7 @@ func main() {
 
 	deps := &app.Deps{
 		Store:     st,
-		Hub:       hub.New(),
+		Hub:       h,
 		Questions: questions,
 		Memes:     memes,
 	}

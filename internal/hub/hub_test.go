@@ -1,6 +1,9 @@
 package hub
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestClean(t *testing.T) {
 	cases := map[string]string{
@@ -18,7 +21,7 @@ func TestClean(t *testing.T) {
 }
 
 func TestChatFlow(t *testing.T) {
-	h := New()
+	h := New(nil)
 	a := h.Connect("", "alice", false, nil)
 	b := h.Connect("", "bob", true, nil)
 	if h.Count() != 2 {
@@ -58,7 +61,7 @@ func TestChatFlow(t *testing.T) {
 }
 
 func TestOneSessionPerIdentity(t *testing.T) {
-	h := New()
+	h := New(nil)
 	kicked := make(chan struct{})
 	first := h.Connect("key:abc", "alice", false, func() { close(kicked) })
 	_, sub := h.Join(first)
@@ -89,4 +92,30 @@ func TestOneSessionPerIdentity(t *testing.T) {
 	if h.Count() != 3 {
 		t.Fatalf("count = %d, want 3", h.Count())
 	}
+}
+
+func TestHistoryAndArchive(t *testing.T) {
+	old := []Message{{Nick: "ada", Text: "before the restart"}}
+	h := New(old)
+	a := h.Connect("", "alice", false, nil)
+
+	history, sub := h.Join(a)
+	if len(history) != 1 || history[0].Text != "before the restart" {
+		t.Fatalf("history = %+v", history)
+	}
+	<-sub
+	if !h.Send(a, "hello") {
+		t.Fatal("send failed")
+	}
+
+	// Only the posted message is archived, not the join notice.
+	select {
+	case msg := <-h.Archive():
+		if msg.Text != "hello" || msg.Nick != "alice" {
+			t.Fatalf("archived %+v", msg)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("nothing archived")
+	}
+
 }

@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	historySize = 100
-	maxMsgLen   = 280
-	subBuffer   = 64
+	historySize   = 100
+	maxMsgLen     = 280
+	subBuffer     = 64
+	archiveBuffer = 256
 )
 
 // Message is one chat line. System messages announce joins and leaves.
@@ -39,10 +40,27 @@ type Hub struct {
 	members    map[int]*member
 	identities map[string]int // identity -> session id, for one session per person
 	history    []Message
+	archive    chan Message
 }
 
-// New creates an empty hub.
-func New() *Hub { return &Hub{members: map[int]*member{}, identities: map[string]int{}} }
+// New creates a hub whose chat starts with history (oldest first), such as
+// messages saved before a restart.
+func New(history []Message) *Hub {
+	if len(history) > historySize {
+		history = history[len(history)-historySize:]
+	}
+	return &Hub{
+		members:    map[int]*member{},
+		identities: map[string]int{},
+		history:    append([]Message(nil), history...),
+		archive:    make(chan Message, archiveBuffer),
+	}
+}
+
+// Archive delivers every chat message people post (not join/leave notices),
+// so they can be saved. If nobody keeps up, messages are dropped rather than
+// stalling the chat.
+func (h *Hub) Archive() <-chan Message { return h.archive }
 
 // Connect registers a session and returns its id.
 //
@@ -184,6 +202,12 @@ func (h *Hub) broadcastLocked(msg Message) {
 	h.history = append(h.history, msg)
 	if len(h.history) > historySize {
 		h.history = h.history[len(h.history)-historySize:]
+	}
+	if !msg.System {
+		select {
+		case h.archive <- msg:
+		default: // storage is stuck; keep the chat going
+		}
 	}
 	for _, m := range h.members {
 		if m.sub == nil {

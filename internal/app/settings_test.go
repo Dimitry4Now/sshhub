@@ -50,7 +50,7 @@ func newTestSettings(t *testing.T, guest bool) (*settingsScreen, *store.Store, *
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	h := hub.New()
+	h := hub.New(nil)
 	sess := &Session{Nick: "ada", Guest: guest}
 	if !guest {
 		sess.Fingerprint = "fp-ada"
