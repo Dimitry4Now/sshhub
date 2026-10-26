@@ -142,3 +142,17 @@ func TestRecentMessages(t *testing.T) {
 		t.Fatalf("time = %v", msgs[2].Time)
 	}
 }
+
+func TestAudit(t *testing.T) {
+	st := open(t)
+	at := time.Unix(1_700_000_000, 0)
+	for _, cmd := range []string{"who", "kick bob"} {
+		if err := st.Audit(AuditEntry{Time: at, Fingerprint: "SHA256:admin", Command: cmd}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := st.RecentAudit(10)
+	if err != nil || len(got) != 2 || got[0].Command != "kick bob" || got[1].Fingerprint != "SHA256:admin" || !got[0].Time.Equal(at) {
+		t.Fatalf("audit = %+v err=%v", got, err)
+	}
+}

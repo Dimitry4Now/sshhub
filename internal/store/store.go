@@ -51,6 +51,12 @@ var migrations = []string{
 		text       TEXT NOT NULL,
 		created_at INTEGER NOT NULL
 	)`,
+	`CREATE TABLE audit (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		fingerprint TEXT NOT NULL,
+		command     TEXT NOT NULL,
+		created_at  INTEGER NOT NULL
+	)`,
 }
 
 // Message is one saved line of the chat lobby. Nick is the name as it was
@@ -242,4 +248,38 @@ func (s *Store) Check() error {
 		return fmt.Errorf("integrity check: %s", res)
 	}
 	return nil
+}
+
+// AuditEntry is one admin command, as recorded.
+type AuditEntry struct {
+	Time        time.Time
+	Fingerprint string
+	Command     string
+}
+
+// Audit records an admin command. The log is only ever appended to.
+func (s *Store) Audit(e AuditEntry) error {
+	_, err := s.db.Exec(`INSERT INTO audit (fingerprint, command, created_at) VALUES (?, ?, ?)`,
+		e.Fingerprint, e.Command, e.Time.Unix())
+	return err
+}
+
+// RecentAudit returns the newest admin commands, newest first.
+func (s *Store) RecentAudit(limit int) ([]AuditEntry, error) {
+	rows, err := s.db.Query(`SELECT fingerprint, command, created_at FROM audit ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		var ts int64
+		if err := rows.Scan(&e.Fingerprint, &e.Command, &ts); err != nil {
+			return nil, err
+		}
+		e.Time = time.Unix(ts, 0)
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
