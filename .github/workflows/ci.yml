@@ -1,7 +1,8 @@
 name: CI
 
 # Every pull request is checked; so are develop and master after a merge.
-# Branch protection requires the "test" job to pass before merging.
+# Branch protection requires "test" on both branches and "release source" on
+# master. A push to master (a merged release PR) deploys to production.
 on:
   push:
     branches: [develop, master]
@@ -52,4 +53,78 @@ jobs:
           curl -sS -o /dev/null -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
             --data-urlencode chat_id="$CHAT" \
             --data-urlencode text="CI failed: $GITHUB_REPOSITORY on $GITHUB_REF_NAME (${GITHUB_SHA::7})
+          $RUN_URL"
+
+  # Releases reach master only from develop; required by master's ruleset.
+  release-source:
+    name: release source
+    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull request comes from develop
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REF" != develop ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::master takes releases from develop only, not $HEAD_REPO:$HEAD_REF"
+            exit 1
+          fi
+
+  deploy:
+    name: deploy
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    # The deploy key is a secret of this environment, which only master may
+    # use (see deploy/ci-key.sh).
+    environment: production
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      HOST: ${{ vars.DEPLOY_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=${{ vars.DEPLOY_GOARCH }} go build -trimpath -o sshhub .
+      - name: Install on the server
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The key can only run sshhub-install, which reads the binary from
+          # stdin, restarts the hub and rolls back if it doesn't come up.
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "deploy@$HOST" < sshhub
+          rm -f ~/.ssh/deploy
+      - name: Answers from outside
+        run: |
+          for _ in $(seq 20); do
+            if ssh-keyscan -T 3 -p 23234 "$HOST" 2>/dev/null | grep -q ssh-ed25519; then
+              echo "reachable: ssh -p 23234 $HOST"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::$HOST:23234 doesn't answer"
+          exit 1
+      - name: Notify
+        if: always()
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RESULT: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$TOKEN" ] || exit 0
+          curl -sS -o /dev/null -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            --data-urlencode chat_id="$CHAT" \
+            --data-urlencode text="Deploy $RESULT: ${GITHUB_SHA::7} to $HOST
           $RUN_URL"
