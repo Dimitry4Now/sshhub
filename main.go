@@ -239,6 +239,7 @@ func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
 			Guest:    sess.Guest,
 			Addr:     s.RemoteAddr().String(),
 			Kick:     func(r hub.KickReason) { p.Send(app.KickedMsg{Reason: r}) },
+			Notify:   func(text string) { p.Send(app.NoticeMsg{Text: text}) },
 		})
 		go func() {
 			<-s.Context().Done()
