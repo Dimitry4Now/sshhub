@@ -9,7 +9,7 @@ Wants=network-online.target
 [Service]
 User=sshhub
 Group=sshhub
-ExecStart=/usr/local/bin/sshhub -addr :23234 -db /var/lib/sshhub/hub.db -hostkey /var/lib/sshhub/host_ed25519
+ExecStart=/usr/local/bin/sshhub -addr :23234 -db /var/lib/sshhub/hub.db -hostkey /var/lib/sshhub/host_ed25519 -admin-keys /etc/sshhub/admin_keys
 WorkingDirectory=/var/lib/sshhub
 # Creates /var/lib/sshhub owned by the service user; the database and the
 # host key live there. Losing the host key makes every client warn that the

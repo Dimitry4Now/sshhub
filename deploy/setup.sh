@@ -11,6 +11,11 @@ if ! id sshhub >/dev/null 2>&1; then
   echo "created user sshhub"
 fi
 
+# Admin keys live outside the service's reach: root owns them, the hub only
+# reads them (see deploy.sh --add-admin).
+install -d -m 0755 /etc/sshhub
+[ -f /etc/sshhub/admin_keys ] || install -m 0644 /dev/null /etc/sshhub/admin_keys
+
 install -m 0644 /tmp/sshhub-units/* /etc/systemd/system/
 rm -rf /tmp/sshhub-units
 systemctl daemon-reload

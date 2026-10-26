@@ -26,6 +26,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"sshhub/assets"
+	"sshhub/internal/admin"
 	"sshhub/internal/app"
 	"sshhub/internal/backup"
 	"sshhub/internal/hub"
@@ -43,6 +44,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	backupDir := flag.String("backup", "", "snapshot the database and host key into this directory and exit")
 	keep := flag.Int("keep", 14, "with -backup: how many snapshots to keep")
+	adminKeys := flag.String("admin-keys", "", "authorized_keys file of keys that may run admin commands")
 	flag.Parse()
 
 	if *showVersion {
@@ -108,6 +110,14 @@ func main() {
 	}
 
 	conns := limit.NewConns(*maxConns, *maxConnsPerIP)
+	adm := &admin.Admin{
+		KeysPath: *adminKeys,
+		Hub:      h,
+		Store:    st,
+		Conns:    conns.Open,
+		Version:  deps.Version,
+		Started:  time.Now(),
+	}
 
 	srv, err := wish.NewServer(
 		wish.WithAddress(*addr),
@@ -128,6 +138,9 @@ func main() {
 		wish.WithMiddleware(
 			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, *dev)),
 			activeterm.Middleware(),
+			// Runs before the two above: sessions with a command (ssh host
+			// who) are admin commands and never reach the TUI.
+			adm.Middleware(),
 			ratelimiter.Middleware(ratelimiter.NewRateLimiter(rate.Every(2*time.Second), 5, 4096)),
 			logging.Middleware(),
 		),

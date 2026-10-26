@@ -6,6 +6,8 @@
 #   deploy/deploy.sh --rollback         go back to the previously deployed binary
 #   deploy/deploy.sh --pull-backup      take a backup now and copy it to ./backups
 #   deploy/deploy.sh --restore FILE     replace the server's database with a snapshot
+#   deploy/deploy.sh --add-admin [KEY]  allow a public key to run admin commands
+#                                       (default ~/.ssh/id_ed25519.pub)
 #
 #   HOST  ssh destination for administration (default ubuntu@dibe-ssh-hub.duckdns.org)
 #   PORT  the hub's port (default 23234; must match sshhub.service)
@@ -115,7 +117,15 @@ case "${1:-}" in
   echo "› restored; the previous database is $STATE/hub.db.before-restore"
   verify
   ;;
+--add-admin)
+  key_file="${2:-$HOME/.ssh/id_ed25519.pub}"
+  [[ -f "$key_file" ]] || die "no such key file: $key_file"
+  ssh-keygen -lf "$key_file" >/dev/null || die "$key_file is not a public key"
+  # Sent on stdin, so the key never goes through shell quoting.
+  remote 'k="$(cat)"; sudo grep -qxF "$k" /etc/sshhub/admin_keys || echo "$k" | sudo tee -a /etc/sshhub/admin_keys >/dev/null' < "$key_file"
+  echo "› admin: $(ssh-keygen -lf "$key_file")"
+  ;;
 *)
-  die "usage: $0 [--rollback | --pull-backup | --restore FILE]"
+  die "usage: $0 [--rollback | --pull-backup | --restore FILE | --add-admin [KEY]]"
   ;;
 esac
