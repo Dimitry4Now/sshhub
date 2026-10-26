@@ -26,6 +26,7 @@ import (
 	"sshhub/assets"
 	"sshhub/internal/app"
 	"sshhub/internal/hub"
+	"sshhub/internal/limit"
 	"sshhub/internal/store"
 )
 
@@ -34,6 +35,8 @@ func main() {
 	dbPath := flag.String("db", "hub.db", "SQLite database path")
 	hostKey := flag.String("hostkey", ".ssh/id_ed25519", "host key path (created if missing)")
 	dev := flag.Bool("dev", false, "allow several sessions per person (for local testing)")
+	maxConns := flag.Int("max-conns", 200, "most connections open at once")
+	maxConnsPerIP := flag.Int("max-conns-per-ip", 10, "most connections open at once from one address")
 	flag.Parse()
 
 	st, err := store.Open(*dbPath)
@@ -80,6 +83,8 @@ func main() {
 		Memes:     memes,
 	}
 
+	conns := limit.NewConns(*maxConns, *maxConnsPerIP)
+
 	srv, err := wish.NewServer(
 		wish.WithAddress(*addr),
 		wish.WithHostKeyPath(*hostKey),
@@ -89,6 +94,13 @@ func main() {
 		wish.WithKeyboardInteractiveAuth(func(ssh.Context, gossh.KeyboardInteractiveChallenge) bool { return true }),
 		wish.WithIdleTimeout(15*time.Minute),
 		wish.WithMaxTimeout(3*time.Hour),
+		ssh.WrapConn(func(_ ssh.Context, c net.Conn) net.Conn {
+			admitted := conns.Admit(c)
+			if admitted == nil {
+				log.Warn("connection refused: too many open", "remote", c.RemoteAddr(), "open", conns.Open())
+			}
+			return admitted
+		}),
 		wish.WithMiddleware(
 			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, *dev)),
 			activeterm.Middleware(),
