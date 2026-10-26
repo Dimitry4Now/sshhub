@@ -33,7 +33,7 @@ verify() {
   for _ in $(seq 20); do
     if ssh-keyscan -T 3 -p "$PORT" "$NAME" 2>/dev/null | grep -q ssh-ed25519; then
       echo "› reachable: ssh -p $PORT $NAME"
-      remote sudo journalctl -u sshhub -n 1 --no-pager -g "starting ssh hub" -o cat
+      remote 'sudo journalctl -u sshhub -n 1 --no-pager -g "starting ssh hub" -o cat'
       return 0
     fi
     sleep 0.5
