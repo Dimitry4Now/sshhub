@@ -35,7 +35,9 @@ go build -o sshhub .
 ssh -p 23234 localhost         # connect
 ```
 
-Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally).
+Flags: `-addr`, `-db`, `-hostkey`, `-dev` (allow several sessions per person, handy for testing locally), `-max-conns` and `-max-conns-per-ip` (connections open at once, 200 and 10 by default), `-version`.
+
+Everything that should outlive a restart lives in the SQLite database: profiles, scores, themes and the chat lobby's history (the last 100 messages are shown when you join). Stopping the server (Ctrl+C or SIGTERM) tells everyone connected that it's restarting and gives them a few seconds before closing.
 
 The repo pins a newer Go toolchain in `go.mod`; with Go 1.21+ installed it is downloaded automatically.
 
@@ -45,6 +47,22 @@ The repo pins a newer Go toolchain in `go.mod`; with Go 1.21+ installed it is do
 - Connecting without a key (`ssh -o PubkeyAuthentication=no you@host`): guest session, named after your SSH username, scores not saved.
 - Settings: key users can change their nickname (the leaderboard follows, since scores belong to the key) and clear all their scores. Theme choice is saved per key; guests keep it for the session.
 - One session per person: logging in again (same key, or for guests same address and username) closes the older session. Run with `-dev` to turn this off.
+
+## Deploy
+
+`deploy/` runs the hub as a hardened systemd service on a Linux server (amd64 or arm64), with the database and host key in `/var/lib/sshhub`.
+
+```sh
+deploy/deploy.sh --setup     # first time: service user, systemd unit, firewall rule, then deploy
+deploy/deploy.sh             # build the current checkout, install it, restart, check it answers
+deploy/deploy.sh --rollback  # back to the previous binary
+```
+
+`HOST` picks the server (an SSH destination with sudo) and `PORT` the hub's port. On a cloud VM, the provider's firewall (for Oracle Cloud, the subnet's security list) must allow the port too. Logs: `journalctl -u sshhub -f`.
+
+## CI
+
+GitHub Actions checks formatting and runs `go vet`, the tests with the race detector, staticcheck and govulncheck, and cross-compiles for the server. To get a Telegram message when a run fails, create a bot with @BotFather and add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as repository secrets.
 
 ## Adding content
 
