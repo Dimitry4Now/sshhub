@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time server preparation, run as root on the server (deploy.sh --setup
-# does this over SSH). Safe to run again.
+# Server preparation, run as root on the server by deploy.sh before every
+# deploy, with the unit files in /tmp/sshhub-units. Safe to run again.
 #   PORT  the port to open in the firewall (default 23234)
 set -euo pipefail
 PORT="${PORT:-23234}"
@@ -11,16 +11,17 @@ if ! id sshhub >/dev/null 2>&1; then
   echo "created user sshhub"
 fi
 
-install -m 0644 /tmp/sshhub.service /etc/systemd/system/sshhub.service
+install -m 0644 /tmp/sshhub-units/* /etc/systemd/system/
+rm -rf /tmp/sshhub-units
 systemctl daemon-reload
-systemctl enable sshhub >/dev/null
-echo "installed and enabled sshhub.service"
+systemctl enable --quiet sshhub
+systemctl enable --quiet --now sshhub-backup.timer
 
 # Oracle Cloud's Ubuntu images ship iptables rules that reject everything but
 # SSH; insert an accept rule before the first REJECT and persist it. Other
 # setups may use ufw instead.
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
-  ufw allow "$PORT/tcp"
+  ufw allow "$PORT/tcp" >/dev/null
 elif ! iptables -C INPUT -p tcp -m state --state NEW --dport "$PORT" -j ACCEPT 2>/dev/null; then
   pos=$(iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" {print $1; exit}')
   iptables -I INPUT "${pos:-1}" -p tcp -m state --state NEW --dport "$PORT" -j ACCEPT

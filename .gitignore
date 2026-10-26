@@ -6,3 +6,6 @@
 *.db-shm
 *.db-wal
 .ssh/
+
+# local copies of server backups (deploy.sh --pull-backup)
+/backups/

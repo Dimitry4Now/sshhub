@@ -1,0 +1,39 @@
+# Daily snapshot of the hub's database and host key, started by
+# sshhub-backup.timer. Run now with: sudo systemctl start sshhub-backup
+[Unit]
+Description=SSH Hub backup
+
+[Service]
+Type=oneshot
+User=sshhub
+Group=sshhub
+ExecStart=/usr/local/bin/sshhub -db /var/lib/sshhub/hub.db -hostkey /var/lib/sshhub/host_ed25519 -backup /var/lib/sshhub/backups -keep 14
+StateDirectory=sshhub
+UMask=0077
+
+# Same sandbox as the hub, minus the network.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
