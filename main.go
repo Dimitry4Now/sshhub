@@ -27,6 +27,7 @@ import (
 
 	"sshhub/assets"
 	"sshhub/internal/app"
+	"sshhub/internal/backup"
 	"sshhub/internal/hub"
 	"sshhub/internal/limit"
 	"sshhub/internal/store"
@@ -40,6 +41,8 @@ func main() {
 	maxConns := flag.Int("max-conns", 200, "most connections open at once")
 	maxConnsPerIP := flag.Int("max-conns-per-ip", 10, "most connections open at once from one address")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	backupDir := flag.String("backup", "", "snapshot the database and host key into this directory and exit")
+	keep := flag.Int("keep", 14, "with -backup: how many snapshots to keep")
 	flag.Parse()
 
 	if *showVersion {
@@ -52,6 +55,18 @@ func main() {
 		log.Fatal("open database", "err", err)
 	}
 	defer st.Close()
+
+	if *backupDir != "" {
+		path, err := backup.Snapshot(st, *backupDir, *keep, time.Now())
+		if err != nil {
+			log.Fatal("backup", "err", err)
+		}
+		if err := backup.CopyFile(*hostKey, *backupDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Fatal("back up host key", "err", err)
+		}
+		log.Info("backup written", "path", path)
+		return
+	}
 
 	saved, err := st.RecentMessages(100)
 	if err != nil {

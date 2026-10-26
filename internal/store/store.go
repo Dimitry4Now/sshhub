@@ -224,3 +224,22 @@ func (s *Store) RecentMessages(limit int) ([]Message, error) {
 	}
 	return out, rows.Err()
 }
+
+// Backup writes a consistent copy of the database to path, which must not
+// exist yet. It is safe while the hub is running.
+func (s *Store) Backup(path string) error {
+	_, err := s.db.Exec(`VACUUM INTO ?`, path)
+	return err
+}
+
+// Check runs SQLite's integrity check.
+func (s *Store) Check() error {
+	var res string
+	if err := s.db.QueryRow(`PRAGMA integrity_check`).Scan(&res); err != nil {
+		return err
+	}
+	if res != "ok" {
+		return fmt.Errorf("integrity check: %s", res)
+	}
+	return nil
+}
