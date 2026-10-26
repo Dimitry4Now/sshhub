@@ -138,6 +138,9 @@ func main() {
 		wish.WithMiddleware(
 			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, *dev)),
 			activeterm.Middleware(),
+			// With 100 connections at this size the hub peaked at about
+			// 1.1 GB, inside the service's memory limit.
+			limit.Window(300, 100),
 			// Runs before the two above: sessions with a command (ssh host
 			// who) are admin commands and never reach the TUI.
 			adm.Middleware(),
