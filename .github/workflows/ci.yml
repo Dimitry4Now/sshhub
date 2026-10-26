@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - name: Vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: Build for the server
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /dev/null .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /dev/null .
+      # Set the TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID repository secrets to
+      # get a message when a run fails; without them this step does nothing.
+      - name: Notify on failure
+        if: failure()
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -n "$TOKEN" ] || exit 0
+          curl -sS -o /dev/null -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            --data-urlencode chat_id="$CHAT" \
+            --data-urlencode text="CI failed: $GITHUB_REPOSITORY on $GITHUB_REF_NAME (${GITHUB_SHA::7})
+          $RUN_URL"
