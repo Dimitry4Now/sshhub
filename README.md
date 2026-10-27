@@ -63,7 +63,7 @@ One session at a time: logging in again (same key, or as a guest from the same a
 Everything is a single Go program. It speaks SSH itself, so it doesn't need the server's own SSH or a shell: each connection gets its own instance of the app, drawn with [Bubble Tea](https://github.com/charmbracelet/bubbletea), while the things everyone shares (who's online, the chat) live in one place in memory. Persistent data is in SQLite.
 
 ```mermaid
-flowchart LR
+flowchart TB
     client["Your terminal<br/>ssh"] -->|"TCP :23234"| caps["Connection caps<br/>100 total, 10 per address"]
     caps --> handshake["SSH handshake<br/>key = account<br/>no key = guest"]
     handshake --> mw["Logging and<br/>rate limit"]
@@ -79,21 +79,21 @@ flowchart LR
     db -.->|"nightly"| backups[("Snapshots")]
 ```
 
-The hub is guarded by a single mutex. Each chat member has a buffered channel; a message is handed to every channel and to the archive without ever waiting, so one slow connection or a slow disk can't hold up the chat:
+The hub is guarded by a single mutex. Each chat member has a buffered channel; a message is handed to every channel and to the archive goroutine without ever waiting, so one slow connection or a slow disk can't hold up the chat. A reader that falls too far behind skips messages instead:
 
 ```mermaid
 sequenceDiagram
-    participant A as Alice's session
+    participant A as Alice
     participant H as Hub
-    participant B as Bob's session
-    participant W as Archive goroutine
+    participant B as Bob
+    participant W as Archive
     participant D as SQLite
     A->>H: Send("hi")
-    H->>H: strip control characters, rate limit
-    H-->>A: her own copy
-    H-->>B: subscription channel (skipped if Bob is too far behind)
+    H->>H: clean, rate limit
+    H-->>A: own copy
+    H-->>B: channel (skip if behind)
     H-->>W: archive channel
-    W->>D: INSERT INTO messages
+    W->>D: INSERT
 ```
 
 Stopping the server (Ctrl+C, SIGTERM, `systemctl restart`) tells everyone the hub is restarting and gives them a few seconds to see it, then lets the archive finish before the database closes.
@@ -164,7 +164,7 @@ The file is read on every command, so adding or removing a key applies at once. 
 ### Workflow
 
 ```mermaid
-flowchart LR
+flowchart TB
     branch["Feature branch"] -->|"pull request"| ci{"CI: format, vet,<br/>race tests, staticcheck,<br/>govulncheck, builds"}
     ci -->|"passes, merge"| develop["develop"]
     develop -->|"git tag v1.2.3"| tag["Release tag"]
