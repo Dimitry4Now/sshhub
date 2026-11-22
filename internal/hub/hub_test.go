@@ -1,17 +1,25 @@
 package hub
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestClean(t *testing.T) {
 	cases := map[string]string{
-		"hello":                  "hello",
-		"  spaced \t out \n ":    "spaced out",
-		"\x1b[31mred\x1b[0m":     "[31mred [0m",
-		"bell\x07 and \u009bcsi": "bell and csi",
-		"":                       "",
+		"hello":                                  "hello",
+		"  spaced \t out \n ":                    "spaced out",
+		"\x1b[31mred\x1b[0m":                     "[31mred [0m",
+		"bell\x07 and \u009bcsi":                 "bell and csi",
+		"":                                       "",
+		"left \u202Ethgir":                       "left thgir",
+		"zero\u200Bwidth\uFEFF":                  "zerowidth",
+		"caf\u00e9 cafe\u0301":                   "caf\u00e9 cafe\u0301",
+		"vie\u0323\u0302t":                       "vie\u0323\u0302t",
+		"z" + strings.Repeat("\u0300", 50) + "!": "z\u0300\u0300!",
+		"line\u2028break":                        "line break",
+		"broken \xff utf8":                       "broken utf8",
 	}
 	for in, want := range cases {
 		if got := Clean(in); got != want {

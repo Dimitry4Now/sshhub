@@ -377,16 +377,36 @@ func (h *Hub) broadcastLocked(msg Message) {
 	}
 }
 
-// Clean strips control characters (including terminal escape sequences'
-// ESC byte), collapses whitespace and caps the length.
+// maxMarks is how many combining marks (accents) one letter may carry. Real
+// text needs one or two; piles of them ("Zalgo" text) spill over the lines
+// above and below in other people's terminals.
+const maxMarks = 2
+
+// Clean makes text safe to show in other people's terminals. It replaces
+// control characters (including terminal escape sequences' ESC byte) with
+// spaces, drops invisible formatting characters (bidi overrides that flip
+// text, zero-width characters), limits combining marks, collapses
+// whitespace and caps the length.
 func Clean(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == unicode.ReplacementChar {
-			return ' '
+	var b strings.Builder
+	marks := 0
+	for _, r := range s {
+		switch {
+		case unicode.IsControl(r) || r == unicode.ReplacementChar:
+			r = ' '
+		case unicode.Is(unicode.Cf, r):
+			continue
 		}
-		return r
-	}, s)
-	s = strings.Join(strings.Fields(s), " ")
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			if marks++; marks > maxMarks {
+				continue
+			}
+		} else {
+			marks = 0
+		}
+		b.WriteRune(r)
+	}
+	s = strings.Join(strings.Fields(b.String()), " ")
 	if r := []rune(s); len(r) > maxMsgLen {
 		s = string(r[:maxMsgLen])
 	}
