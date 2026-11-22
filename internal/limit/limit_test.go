@@ -56,3 +56,31 @@ func TestTotalLimit(t *testing.T) {
 		t.Fatal("slot not freed")
 	}
 }
+
+func TestHost(t *testing.T) {
+	cases := map[string]string{
+		"203.0.113.7:50000":             "203.0.113.7",
+		"203.0.113.7":                   "203.0.113.7",
+		"[::ffff:203.0.113.7]:22":       "203.0.113.7",
+		"[2001:db8:1:2:aaaa::1]:50000":  "2001:db8:1:2::/64",
+		"2001:db8:1:2:ffff:ffff:ffff:1": "2001:db8:1:2::/64",
+		"not an address":                "not an address",
+	}
+	for in, want := range cases {
+		if got := Host(in); got != want {
+			t.Errorf("Host(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestIPv6PrefixSharesLimit(t *testing.T) {
+	c := NewConns(10, 2)
+	c.Admit(from("2001:db8::1"))
+	c.Admit(from("2001:db8::2"))
+	if c.Admit(from("2001:db8::ffff:3")) != nil {
+		t.Fatal("third address in the same /64 admitted")
+	}
+	if c.Admit(from("2001:db8:0:1::1")) == nil {
+		t.Fatal("next /64 refused")
+	}
+}

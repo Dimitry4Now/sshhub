@@ -45,6 +45,7 @@ func main() {
 	backupDir := flag.String("backup", "", "snapshot the database and host key into this directory and exit")
 	keep := flag.Int("keep", 14, "with -backup: how many snapshots to keep")
 	adminKeys := flag.String("admin-keys", "", "authorized_keys file of keys that may run admin commands")
+	chatDays := flag.Int("chat-days", 30, "delete chat messages older than this many days (0 keeps them)")
 	flag.Parse()
 
 	if *showVersion {
@@ -70,6 +71,8 @@ func main() {
 		return
 	}
 
+	// Prune before loading the history, so expired messages aren't shown.
+	pruneChat(st, *chatDays)
 	saved, err := st.RecentMessages(100)
 	if err != nil {
 		log.Fatal("load chat history", "err", err)
@@ -126,6 +129,9 @@ func main() {
 		wish.WithPublicKeyAuth(func(ssh.Context, ssh.PublicKey) bool { return true }),
 		// Clients without a key get in as guests.
 		wish.WithKeyboardInteractiveAuth(func(ssh.Context, gossh.KeyboardInteractiveChallenge) bool { return true }),
+		// For sessions without the TUI (admin commands, stalled clients).
+		// The TUI redraws every second, which counts as activity here, so
+		// it closes sessions nobody types in itself.
 		wish.WithIdleTimeout(15*time.Minute),
 		wish.WithMaxTimeout(3*time.Hour),
 		ssh.WrapConn(func(_ ssh.Context, c net.Conn) net.Conn {
@@ -141,8 +147,11 @@ func main() {
 			// With 100 connections at this size the hub peaked at about
 			// 1.1 GB, inside the service's memory limit.
 			limit.Window(300, 100),
-			// Runs before the two above: sessions with a command (ssh host
-			// who) are admin commands and never reach the TUI.
+			// Turns banned visitors away before they reach the hub.
+			adm.Gate(),
+			// Runs before the ones above: sessions with a command (ssh host
+			// who) are admin commands and never reach the TUI, so a ban
+			// can't lock an admin out.
 			adm.Middleware(),
 			ratelimiter.Middleware(ratelimiter.NewRateLimiter(rate.Every(2*time.Second), 5, 4096)),
 			logging.Middleware(),
@@ -161,6 +170,18 @@ func main() {
 			stop()
 		}
 	}()
+	if *chatDays > 0 {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Hour):
+					pruneChat(st, *chatDays)
+				}
+			}
+		}()
+	}
 	<-ctx.Done()
 
 	// Tell every session we're restarting and give them a moment to show it
@@ -180,6 +201,19 @@ func main() {
 	}
 	<-archived
 	log.Info("stopped")
+}
+
+// pruneChat deletes chat messages older than days; 0 keeps them all.
+func pruneChat(st *store.Store, days int) {
+	if days <= 0 {
+		return
+	}
+	n, err := st.PruneMessages(time.Now().AddDate(0, 0, -days))
+	if err != nil {
+		log.Error("prune chat", "err", err)
+	} else if n > 0 {
+		log.Info("pruned chat", "messages", n, "days", days)
+	}
 }
 
 // release is the release tag of the build, set by the deploy:

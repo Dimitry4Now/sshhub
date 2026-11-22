@@ -1,17 +1,25 @@
 package hub
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestClean(t *testing.T) {
 	cases := map[string]string{
-		"hello":                  "hello",
-		"  spaced \t out \n ":    "spaced out",
-		"\x1b[31mred\x1b[0m":     "[31mred [0m",
-		"bell\x07 and \u009bcsi": "bell and csi",
-		"":                       "",
+		"hello":                                  "hello",
+		"  spaced \t out \n ":                    "spaced out",
+		"\x1b[31mred\x1b[0m":                     "[31mred [0m",
+		"bell\x07 and \u009bcsi":                 "bell and csi",
+		"":                                       "",
+		"left \u202Ethgir":                       "left thgir",
+		"zero\u200Bwidth\uFEFF":                  "zerowidth",
+		"caf\u00e9 cafe\u0301":                   "caf\u00e9 cafe\u0301",
+		"vie\u0323\u0302t":                       "vie\u0323\u0302t",
+		"z" + strings.Repeat("\u0300", 50) + "!": "z\u0300\u0300!",
+		"line\u2028break":                        "line break",
+		"broken \xff utf8":                       "broken utf8",
 	}
 	for in, want := range cases {
 		if got := Clean(in); got != want {
@@ -192,5 +200,44 @@ func TestAdminKickAnnounceSessions(t *testing.T) {
 	}
 	if h.Count() != 1 || h.Kick(b) {
 		t.Fatal("kicked session still there")
+	}
+}
+
+func TestJoinNoticesAreThrottledPerAddress(t *testing.T) {
+	h := New(nil)
+	watcher := h.Connect(Client{Nick: "watcher", Addr: "198.51.100.1:4000"})
+	_, sub := h.Join(watcher)
+	<-sub
+
+	// Two sessions from the same address share the allowance.
+	spam := []int{
+		h.Connect(Client{Nick: "spam", Addr: "203.0.113.9:1000"}),
+		h.Connect(Client{Nick: "spam2", Addr: "203.0.113.9:1001"}),
+	}
+	for range 10 {
+		for _, id := range spam {
+			h.Join(id)
+			h.Join(id) // joining again while in the chat isn't news
+			h.Leave(id)
+		}
+	}
+	notices := 0
+	for len(sub) > 0 {
+		msg := <-sub
+		if !msg.System {
+			t.Fatalf("unexpected %+v", msg)
+		}
+		notices++
+	}
+	// Every shown join has its leave, so nobody looks stuck in the chat.
+	if notices != 2*noticeBurst {
+		t.Fatalf("%d notices, want %d", notices, 2*noticeBurst)
+	}
+
+	// Other addresses aren't affected.
+	other := h.Connect(Client{Nick: "carol", Addr: "192.0.2.4:22"})
+	h.Join(other)
+	if msg := <-sub; msg.Nick != "carol" || msg.Text != "joined the chat" {
+		t.Fatalf("got %+v", msg)
 	}
 }

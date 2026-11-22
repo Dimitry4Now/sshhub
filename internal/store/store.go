@@ -57,6 +57,15 @@ var migrations = []string{
 		command     TEXT NOT NULL,
 		created_at  INTEGER NOT NULL
 	)`,
+	`CREATE TABLE bans (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		kind       TEXT NOT NULL,
+		value      TEXT NOT NULL,
+		until      INTEGER NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX bans_value ON bans(value)`,
 }
 
 // Message is one saved line of the chat lobby. Nick is the name as it was
@@ -208,6 +217,16 @@ func (s *Store) SaveMessage(m Message) error {
 	return err
 }
 
+// PruneMessages deletes chat messages posted before t and returns how many
+// were deleted.
+func (s *Store) PruneMessages(t time.Time) (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM messages WHERE created_at < ?`, t.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // RecentMessages returns the newest chat messages, oldest first.
 func (s *Store) RecentMessages(limit int) ([]Message, error) {
 	rows, err := s.db.Query(`
@@ -282,4 +301,112 @@ func (s *Store) RecentAudit(limit int) ([]AuditEntry, error) {
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// Ban kinds: a ban keeps out an SSH key or a host (see limit.Host).
+const (
+	BanKey  = "key"
+	BanHost = "host"
+)
+
+// Ban keeps a key or a host out of the hub.
+type Ban struct {
+	ID      int64
+	Kind    string // BanKey or BanHost
+	Value   string // key fingerprint or host
+	Until   time.Time
+	Forever bool // Until doesn't apply
+	By      string
+	Created time.Time
+}
+
+func (b Ban) activeAt(now time.Time) bool { return b.Forever || b.Until.After(now) }
+
+// AddBan stores a ban and returns its id. It replaces any earlier ban of the
+// same key or host, so banning again changes how long the ban lasts.
+func (s *Store) AddBan(b Ban) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM bans WHERE kind = ? AND value = ?`, b.Kind, b.Value); err != nil {
+		return 0, err
+	}
+	var until int64
+	if !b.Forever {
+		until = b.Until.Unix()
+	}
+	res, err := tx.Exec(`INSERT INTO bans (kind, value, until, created_by, created_at) VALUES (?, ?, ?, ?, ?)`,
+		b.Kind, b.Value, until, b.By, b.Created.Unix())
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	return id, tx.Commit()
+}
+
+// Unban lifts a ban and reports whether it existed.
+func (s *Store) Unban(id int64) (bool, error) {
+	res, err := s.db.Exec(`DELETE FROM bans WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// Bans lists the bans in force at now, oldest first.
+func (s *Store) Bans(now time.Time) ([]Ban, error) {
+	return s.bans(now, `SELECT id, kind, value, until, created_by, created_at FROM bans ORDER BY id`)
+}
+
+// Banned returns the ban in force at now that keeps out a key fingerprint
+// (empty for guests) or a host, if any.
+func (s *Store) Banned(fingerprint, host string, now time.Time) (Ban, bool, error) {
+	bans, err := s.bans(now, `SELECT id, kind, value, until, created_by, created_at FROM bans
+		WHERE (kind = ? AND value = ? AND value != '') OR (kind = ? AND value = ?)`,
+		BanKey, fingerprint, BanHost, host)
+	if err != nil || len(bans) == 0 {
+		return Ban{}, false, err
+	}
+	return bans[0], true, nil
+}
+
+func (s *Store) bans(now time.Time, query string, args ...any) ([]Ban, error) {
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Ban
+	for rows.Next() {
+		var b Ban
+		var until, created int64
+		if err := rows.Scan(&b.ID, &b.Kind, &b.Value, &until, &b.By, &created); err != nil {
+			return nil, err
+		}
+		b.Forever = until == 0
+		if !b.Forever {
+			b.Until = time.Unix(until, 0)
+		}
+		b.Created = time.Unix(created, 0)
+		if b.activeAt(now) {
+			out = append(out, b)
+		}
+	}
+	return out, rows.Err()
+}
+
+// FingerprintOf returns the key fingerprint registered under a nickname.
+func (s *Store) FingerprintOf(nick string) (string, bool, error) {
+	var fp string
+	err := s.db.QueryRow(`SELECT fingerprint FROM users WHERE nick = ?`, nick).Scan(&fp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return fp, err == nil, err
 }

@@ -25,7 +25,7 @@ func NewConns(maxTotal, maxPerHost int) *Conns {
 // Admit returns conn wrapped so that closing it frees its slot, or nil when a
 // limit is reached. The caller closes conn in that case.
 func (c *Conns) Admit(conn net.Conn) net.Conn {
-	host := hostOf(conn.RemoteAddr())
+	host := Host(conn.RemoteAddr().String())
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.total >= c.maxTotal || c.byHost[host] >= c.maxPerHost {
@@ -52,12 +52,24 @@ func (c *Conns) Open() int {
 	return c.total
 }
 
-func hostOf(addr net.Addr) string {
-	host, _, err := net.SplitHostPort(addr.String())
+// Host names the visitor behind a remote address ("ip:port" or a bare IP):
+// the IPv4 address, or for IPv6 its /64 prefix. One IPv6 subscriber usually
+// gets a whole /64 and can use any address in it, so counting addresses one
+// by one would let a single visitor take every connection slot.
+func Host(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return addr.String()
+		host = addr
 	}
-	return host
+	ip := net.ParseIP(host)
+	switch {
+	case ip == nil:
+		return host
+	case ip.To4() != nil:
+		return ip.To4().String()
+	}
+	prefix := &net.IPNet{IP: ip.Mask(net.CIDRMask(64, 128)), Mask: net.CIDRMask(64, 128)}
+	return prefix.String()
 }
 
 type countedConn struct {

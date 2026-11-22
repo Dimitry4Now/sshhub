@@ -7,6 +7,10 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"golang.org/x/time/rate"
+
+	"sshhub/internal/limit"
 )
 
 const (
@@ -14,6 +18,12 @@ const (
 	maxMsgLen     = 280
 	subBuffer     = 64
 	archiveBuffer = 256
+
+	// People from one address get noticeBurst "joined the chat" notices,
+	// then one per noticeEvery. Without a limit, toggling the chat floods
+	// everyone and pushes real messages out of the history.
+	noticeBurst = 4
+	noticeEvery = 30 * time.Second
 )
 
 // KickReason says why the hub asked a session to close.
@@ -50,9 +60,11 @@ type Client struct {
 
 type member struct {
 	Client
-	since  time.Time
-	sub    chan Message // non-nil while the member is in the chat lobby
-	lastTx time.Time
+	host      string // visitor behind Addr, see limit.Host
+	since     time.Time
+	sub       chan Message // non-nil while the member is in the chat lobby
+	announced bool         // their join was announced, so their leave is too
+	lastTx    time.Time
 }
 
 // Hub is shared by every SSH session.
@@ -60,7 +72,8 @@ type Hub struct {
 	mu         sync.Mutex
 	nextID     int
 	members    map[int]*member
-	identities map[string]int // identity -> session id, for one session per person
+	identities map[string]int           // identity -> session id, for one session per person
+	notices    map[string]*rate.Limiter // host -> join notices allowed
 	history    []Message
 	archive    chan Message
 	closed     bool
@@ -76,6 +89,7 @@ func New(history []Message) *Hub {
 	return &Hub{
 		members:    map[int]*member{},
 		identities: map[string]int{},
+		notices:    map[string]*rate.Limiter{},
 		history:    append([]Message(nil), history...),
 		archive:    make(chan Message, archiveBuffer),
 		drained:    make(chan struct{}),
@@ -136,7 +150,7 @@ func (h *Hub) Connect(c Client) int {
 		h.removeLocked(old)
 	}
 	h.nextID++
-	h.members[h.nextID] = &member{Client: c, since: time.Now()}
+	h.members[h.nextID] = &member{Client: c, host: limit.Host(c.Addr), since: time.Now()}
 	if c.Identity != "" {
 		h.identities[c.Identity] = h.nextID
 	}
@@ -271,13 +285,36 @@ func (h *Hub) Join(id int) ([]Message, <-chan Message) {
 		close(ch)
 		return nil, ch
 	}
-	if m.sub != nil {
+	rejoin := m.sub != nil
+	if rejoin {
 		close(m.sub)
 	}
 	m.sub = make(chan Message, subBuffer)
 	history := append([]Message(nil), h.history...)
-	h.broadcastLocked(Message{Time: time.Now(), Nick: display(m), Text: "joined the chat", System: true})
+	if !rejoin && h.allowNoticeLocked(m.host) {
+		m.announced = true
+		h.broadcastLocked(Message{Time: time.Now(), Nick: display(m), Text: "joined the chat", System: true})
+	}
 	return history, m.sub
+}
+
+// allowNoticeLocked reports whether host may cause another join notice. The
+// online list shows who is in the chat either way.
+func (h *Hub) allowNoticeLocked(host string) bool {
+	l := h.notices[host]
+	if l == nil {
+		// Forget hosts whose allowance has refilled, so the map only
+		// holds recent visitors.
+		now := time.Now()
+		for k, old := range h.notices {
+			if old.TokensAt(now) >= noticeBurst {
+				delete(h.notices, k)
+			}
+		}
+		l = rate.NewLimiter(rate.Every(noticeEvery), noticeBurst)
+		h.notices[host] = l
+	}
+	return l.Allow()
 }
 
 // Leave exits the chat lobby.
@@ -294,7 +331,10 @@ func (h *Hub) leaveLocked(id int) {
 	}
 	close(m.sub)
 	m.sub = nil
-	h.broadcastLocked(Message{Time: time.Now(), Nick: display(m), Text: "left the chat", System: true})
+	if m.announced {
+		m.announced = false
+		h.broadcastLocked(Message{Time: time.Now(), Nick: display(m), Text: "left the chat", System: true})
+	}
 }
 
 // Send posts a message from a chat member. It returns false when the text is
@@ -337,16 +377,36 @@ func (h *Hub) broadcastLocked(msg Message) {
 	}
 }
 
-// Clean strips control characters (including terminal escape sequences'
-// ESC byte), collapses whitespace and caps the length.
+// maxMarks is how many combining marks (accents) one letter may carry. Real
+// text needs one or two; piles of them ("Zalgo" text) spill over the lines
+// above and below in other people's terminals.
+const maxMarks = 2
+
+// Clean makes text safe to show in other people's terminals. It replaces
+// control characters (including terminal escape sequences' ESC byte) with
+// spaces, drops invisible formatting characters (bidi overrides that flip
+// text, zero-width characters), limits combining marks, collapses
+// whitespace and caps the length.
 func Clean(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == unicode.ReplacementChar {
-			return ' '
+	var b strings.Builder
+	marks := 0
+	for _, r := range s {
+		switch {
+		case unicode.IsControl(r) || r == unicode.ReplacementChar:
+			r = ' '
+		case unicode.Is(unicode.Cf, r):
+			continue
 		}
-		return r
-	}, s)
-	s = strings.Join(strings.Fields(s), " ")
+		if unicode.In(r, unicode.Mn, unicode.Me) {
+			if marks++; marks > maxMarks {
+				continue
+			}
+		} else {
+			marks = 0
+		}
+		b.WriteRune(r)
+	}
+	s = strings.Join(strings.Fields(b.String()), " ")
 	if r := []rune(s); len(r) > maxMsgLen {
 		s = string(r[:maxMsgLen])
 	}
