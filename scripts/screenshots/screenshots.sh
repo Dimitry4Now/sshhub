@@ -23,7 +23,7 @@ WORK="$(mktemp -d)"
 SERVER_PID=""
 BOT_PIDS=()
 cleanup() {
-  [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
+  if [[ -n "$SERVER_PID" ]]; then kill "$SERVER_PID" 2>/dev/null || true; fi
   for pid in "${BOT_PIDS[@]}"; do kill -- "-$pid" 2>/dev/null || true; done
   rm -rf "$WORK"
 }
@@ -54,6 +54,8 @@ SSH_OPTS="-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFil
 # optionally opening a menu item and posting chat messages.
 bot() {
   local nick=$1 key=$2; shift 2
+  # The inner script gets its values as arguments, so it's in single quotes.
+  # shellcheck disable=SC2016
   setsid bash -c '
     nick=$1 key=$2 work=$3 opts=$4; shift 4
     { sleep 2; printf "%s" "$key"
