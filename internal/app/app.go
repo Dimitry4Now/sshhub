@@ -61,6 +61,28 @@ type NoticeMsg struct{ Text string }
 
 const noticeFor = 15 * time.Second
 
+// A session nobody types in for idleFor is closed, so idle visitors can't
+// hold connection slots for hours. The SSH server's own idle timeout can't
+// do it: the header clock redraws every second, and output counts as
+// activity there. The last idleWarn of it shows a countdown.
+const (
+	idleFor  = 15 * time.Minute
+	idleWarn = time.Minute
+)
+
+// farewell is shown while a session closes.
+type farewell struct{ title, body string }
+
+func kickFarewell(r hub.KickReason) farewell {
+	switch r {
+	case hub.KickShutdown:
+		return farewell{"The hub is restarting", "Your scores are saved. Reconnect in a few seconds."}
+	case hub.KickAdmin:
+		return farewell{"An admin closed this session", "Your scores are saved."}
+	}
+	return farewell{"You connected from somewhere else", "Only one session per person. This one is closing."}
+}
+
 // Model is the root Bubble Tea model for one SSH session.
 type Model struct {
 	deps        *Deps
@@ -70,14 +92,16 @@ type Model struct {
 	now         time.Time
 	menu        *menuScreen
 	screen      screen
-	kicked      *KickedMsg
+	closing     *farewell
 	notice      string
 	noticeUntil time.Time
+	lastInput   time.Time
 }
 
 // New builds the root model for a session.
 func New(deps *Deps, sess *Session) *Model {
-	m := &Model{deps: deps, sess: sess, now: time.Now(), width: 80, height: 24}
+	now := time.Now()
+	m := &Model{deps: deps, sess: sess, now: now, lastInput: now, width: 80, height: 24}
 	m.menu = newMenu(deps, sess)
 	m.screen = m.menu
 	if !sess.Guest && sess.Nick == "" {
@@ -102,10 +126,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.notice, m.noticeUntil = msg.Text, time.Now().Add(noticeFor)
 		return m, nil
 	case KickedMsg:
-		m.kicked = &msg
-		return m, tea.Tick(3*time.Second, func(time.Time) tea.Msg { return tea.QuitMsg{} })
+		return m, m.close(kickFarewell(msg.Reason))
 	}
-	if m.kicked != nil {
+	if m.closing != nil {
 		if _, ok := msg.(tea.KeyPressMsg); ok {
 			return m, tea.Quit
 		}
@@ -113,13 +136,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		m.lastInput = m.now
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
+	case tea.PasteMsg:
+		m.lastInput = m.now
 	case tickMsg:
 		m.now = time.Time(msg)
 		if m.notice != "" && m.now.After(m.noticeUntil) {
 			m.notice = ""
+		}
+		if m.now.Sub(m.lastInput) >= idleFor {
+			return m, m.close(farewell{"Closed for inactivity", "No keys pressed for 15 minutes. Reconnect any time."})
 		}
 		return m, tea.Batch(tick(), m.screen.Update(msg))
 	case switchMsg:
@@ -132,17 +161,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, m.screen.Update(msg)
 }
 
+// close shows f and ends the session a few seconds later, or at a key press.
+func (m *Model) close(f farewell) tea.Cmd {
+	m.closing = &f
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return tea.QuitMsg{} })
+}
+
 func (m *Model) View() tea.View {
 	t := theme(m.sess)
-	if m.kicked != nil {
-		title, body := "You connected from somewhere else", "Only one session per person. This one is closing."
-		switch m.kicked.Reason {
-		case hub.KickShutdown:
-			title, body = "The hub is restarting", "Your scores are saved. Reconnect in a few seconds."
-		case hub.KickAdmin:
-			title, body = "An admin closed this session", "Your scores are saved."
-		}
-		msg := t.box.Render(t.heading.Render(title) + "\n\n" + body)
+	if m.closing != nil {
+		msg := t.box.Render(t.heading.Render(m.closing.title) + "\n\n" + m.closing.body)
 		v := tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
 		v.AltScreen = true
 		return v
@@ -151,6 +179,11 @@ func (m *Model) View() tea.View {
 	if m.notice != "" {
 		header = lipgloss.JoinVertical(lipgloss.Left, header,
 			t.selected.Width(m.width).MaxWidth(m.width).Render(" ! "+m.notice))
+	}
+	if left := idleFor - m.now.Sub(m.lastInput); left <= idleWarn {
+		header = lipgloss.JoinVertical(lipgloss.Left, header,
+			t.selected.Width(m.width).MaxWidth(m.width).Render(fmt.Sprintf(
+				" ! Still there? Closing in %ds, press any key to stay.", int(max(left, 0).Round(time.Second)/time.Second))))
 	}
 	footer := t.help.Render(m.screen.Help())
 	bodyHeight := max(m.height-lipgloss.Height(header)-lipgloss.Height(footer), 1)

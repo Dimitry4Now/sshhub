@@ -126,6 +126,9 @@ func main() {
 		wish.WithPublicKeyAuth(func(ssh.Context, ssh.PublicKey) bool { return true }),
 		// Clients without a key get in as guests.
 		wish.WithKeyboardInteractiveAuth(func(ssh.Context, gossh.KeyboardInteractiveChallenge) bool { return true }),
+		// For sessions without the TUI (admin commands, stalled clients).
+		// The TUI redraws every second, which counts as activity here, so
+		// it closes sessions nobody types in itself.
 		wish.WithIdleTimeout(15*time.Minute),
 		wish.WithMaxTimeout(3*time.Hour),
 		ssh.WrapConn(func(_ ssh.Context, c net.Conn) net.Conn {
