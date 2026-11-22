@@ -89,6 +89,7 @@ func newServer(cfg config, st *store.Store) (*server, error) {
 		Version:   version(),
 	}
 
+	inHub := &sync.Map{} // ssh.Session -> hub id, see leaveHub
 	conns := limit.NewConns(cfg.maxConns, cfg.maxConnsPerIP)
 	adm := &admin.Admin{
 		KeysPath: cfg.adminKeys,
@@ -119,7 +120,8 @@ func newServer(cfg config, st *store.Store) (*server, error) {
 			return admitted
 		}),
 		wish.WithMiddleware(
-			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, cfg.dev)),
+			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, cfg.dev, inHub)),
+			leaveHub(h, inHub),
 			activeterm.Middleware(),
 			// With 100 connections at this size the hub peaked at about
 			// 1.1 GB, inside the service's memory limit.
@@ -178,7 +180,24 @@ func (s *server) stop(grace time.Duration) {
 
 var guestNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
-func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
+// leaveHub takes a session out of the hub once its program has ended. The
+// session's context would be too late: it lasts as long as the SSH
+// connection, which a client can keep open after the session ends, leaving
+// a ghost in the online list.
+func leaveHub(h *hub.Hub, inHub *sync.Map) wish.Middleware {
+	return func(next ssh.Handler) ssh.Handler {
+		return func(s ssh.Session) {
+			next(s)
+			if id, ok := inHub.LoadAndDelete(s); ok {
+				h.Disconnect(id.(int))
+			}
+		}
+	}
+}
+
+// programHandler starts the app for a session and puts it in the hub, noting
+// the hub id in inHub for leaveHub.
+func programHandler(deps *app.Deps, dev bool, inHub *sync.Map) bubbletea.ProgramHandler {
 	return func(s ssh.Session) *tea.Program {
 		sess := &app.Session{}
 		var identity string
@@ -219,10 +238,7 @@ func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
 			Kick:     func(r hub.KickReason) { p.Send(app.KickedMsg{Reason: r}) },
 			Notify:   func(text string) { p.Send(app.NoticeMsg{Text: text}) },
 		})
-		go func() {
-			<-s.Context().Done()
-			deps.Hub.Disconnect(sess.HubID)
-		}()
+		inHub.Store(s, sess.HubID)
 		return p
 	}
 }
