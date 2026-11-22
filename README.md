@@ -10,7 +10,7 @@ ssh -p 23234 dibe-ssh-hub.duckdns.org
 
 ## What's inside
 
-**Chat lobby**: live chat with everyone connected, plus a list of who's online: chatting (●) or somewhere else in the hub (○). The last 100 messages are waiting for you when you join.
+**Chat lobby**: live chat with everyone connected, plus a list of who's online: chatting (●) or somewhere else in the hub (○). The last 100 messages are waiting for you when you join; messages are deleted after 30 days.
 
 ![Chat lobby with the online list](docs/screenshots/chat.png)
 
@@ -54,7 +54,7 @@ ssh -p 23234 -o PubkeyAuthentication=no yourname@dibe-ssh-hub.duckdns.org
 
 To get a key, run `ssh-keygen -t ed25519` once and press Enter at every question.
 
-One session at a time: logging in again (same key, or as a guest from the same address with the same name) closes your older session. In Settings you can change your nickname (your scores follow you) or clear your scores.
+One session at a time: logging in again (same key, or as a guest from the same address with the same name) closes your older session. A session with no key presses for 15 minutes closes itself (it warns you a minute before). In Settings you can change your nickname (your scores follow you) or clear your scores.
 
 ---
 
@@ -68,7 +68,8 @@ flowchart TB
     caps --> handshake["SSH handshake<br/>key = account<br/>no key = guest"]
     handshake --> mw["Logging and<br/>rate limit"]
     mw -->|"ssh host who"| admin["Admin commands<br/>key allowlist + audit log"]
-    mw -->|"interactive"| window["Terminal size cap<br/>300 x 100"]
+    mw -->|"interactive"| gate["Ban check"]
+    gate --> window["Terminal size cap<br/>300 x 100"]
     window --> tui["The app<br/>one per session"]
     tui <--> hub["Hub<br/>presence, chat, kicks"]
     admin --> hub
@@ -131,6 +132,7 @@ The repo pins its Go version in `go.mod`; with Go 1.21 or newer installed, the r
 | `-dev` | off | allow several sessions per person, for local testing |
 | `-max-conns`, `-max-conns-per-ip` | 100, 10 | connections open at once |
 | `-admin-keys` | none | authorized_keys file of admins (see [Administration](#administration)) |
+| `-chat-days` | 30 | delete chat messages older than this; 0 keeps them |
 | `-backup DIR`, `-keep N` | | snapshot the database and host key into DIR, keep N, exit |
 | `-version` | | print the version and exit |
 
@@ -139,8 +141,9 @@ The repo pins its Go version in `go.mod`; with Go 1.21 or newer installed, the r
 It's a public server anyone can reach, so:
 
 - **Nobody gets a shell.** Every connection lands in the app; admins get a fixed list of commands.
-- **Resource caps.** At most 100 connections, 10 per address, and a rate limit on new sessions. Terminal sizes are capped at 300 × 100 cells: drawing costs memory with every cell, and without the cap a single visitor claiming a giant window could run the server out of memory. With every connection at the cap, the server stays well inside its memory limit (measured).
-- **Clean input.** Chat strips control characters, so nobody can send escape sequences to other people's terminals; nicknames are letters, digits, `_` and `-`.
+- **Resource caps.** At most 100 connections, 10 per address (an IPv6 /64 counts as one address, since one subscriber gets a whole /64), and a rate limit on new sessions. Sessions nobody types in close after 15 minutes, so idle visitors can't hold the slots. Terminal sizes are capped at 300 × 100 cells: drawing costs memory with every cell, and without the cap a single visitor claiming a giant window could run the server out of memory. With every connection at the cap, the server stays well inside its memory limit (measured).
+- **Clean input.** Chat strips control characters, so nobody can send escape sequences to other people's terminals, and drops invisible formatting (bidi overrides, zero-width characters) and piles of accents ("Zalgo" text); nicknames are letters, digits, `_` and `-`. Each address gets a few "joined the chat" notices, then one per 30 seconds, so nobody can flood the chat by going in and out.
+- **Bans.** Admins can ban a key, an address, or both at once for a session, for a while or for good; banned visitors are turned away before they reach the hub.
 - **A sandboxed service.** It runs as its own user, can only write its data directory, and has no capabilities or access to other processes (`systemd-analyze security` rates it 1.4, "OK").
 - **Accountable admins.** Admin keys live in a root-owned file outside the app's reach, and every command is written to an audit log before it runs, or doesn't run.
 - **A narrow deploy key.** CI's key can only install a new binary (details below).
@@ -154,10 +157,15 @@ ssh -p 23234 dibe-ssh-hub.duckdns.org who                  # sessions: id, nick,
 ssh -p 23234 dibe-ssh-hub.duckdns.org kick 7               # or kick NICK
 ssh -p 23234 dibe-ssh-hub.duckdns.org broadcast restarting in 5 minutes
 ssh -p 23234 dibe-ssh-hub.duckdns.org stats                # version, uptime, sessions, memory
+ssh -p 23234 dibe-ssh-hub.duckdns.org ban 7 7d             # ban session 7's key and address for a week
+ssh -p 23234 dibe-ssh-hub.duckdns.org bans                 # bans in force, with their IDs
+ssh -p 23234 dibe-ssh-hub.duckdns.org unban 3              # lift ban 3
 ssh -p 23234 dibe-ssh-hub.duckdns.org audit                # the last admin commands
 ```
 
 The file is read on every command, so adding or removing a key applies at once. Anyone else gets the same refusal whatever they type. `broadcast` shows a banner on every screen for 15 seconds and posts it in the chat.
+
+`ban TARGET [FOR]` takes a session ID from `who` (bans that session's key and address), the nickname of a registered player (their key, and the address of any session they have open), a key fingerprint (`SHA256:...`) or an address (IPv6 addresses ban their /64). `FOR` is a length like `30m`, `12h` or `7d`, or `forever`; the default is 24 hours. It closes the banned sessions right away, and banning the same key or address again replaces the earlier ban. Admin keys can't be banned, and admin commands work from a banned address, so a ban never locks an admin out.
 
 ## Releasing and operations
 
@@ -202,7 +210,7 @@ CI only ships the binary; changes to the systemd units, firewall or users go out
 
 `HOST` picks the server (an SSH destination with sudo) and `PORT` the hub's port. On a cloud VM, the provider's firewall (for Oracle Cloud, the subnet's security list) has to allow the port too. Logs: `journalctl -u sshhub -f`.
 
-**Backups**: a systemd timer snapshots the database every night with `VACUUM INTO` (safe while the hub runs), checks the copy's integrity, keeps the last 14 in `/var/lib/sshhub/backups`, and copies the host key next to them. Losing the host key would make every visitor's SSH warn that the server's identity changed. Snapshots on the same disk don't survive losing the server, so pull one now and then.
+**Backups**: a systemd timer snapshots the database every night with `VACUUM INTO` (safe while the hub runs), checks the copy's integrity, keeps the last 14 in `/var/lib/sshhub/backups`, and copies the host key next to them. Losing the host key would make every visitor's SSH warn that the server's identity changed. Snapshots on the same disk don't survive losing the server, so pull one now and then. Snapshots hold chat messages for up to 14 days past the 30 the hub keeps them.
 
 ## Adding content
 
