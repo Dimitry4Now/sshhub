@@ -45,6 +45,7 @@ func main() {
 	backupDir := flag.String("backup", "", "snapshot the database and host key into this directory and exit")
 	keep := flag.Int("keep", 14, "with -backup: how many snapshots to keep")
 	adminKeys := flag.String("admin-keys", "", "authorized_keys file of keys that may run admin commands")
+	chatDays := flag.Int("chat-days", 30, "delete chat messages older than this many days (0 keeps them)")
 	flag.Parse()
 
 	if *showVersion {
@@ -70,6 +71,8 @@ func main() {
 		return
 	}
 
+	// Prune before loading the history, so expired messages aren't shown.
+	pruneChat(st, *chatDays)
 	saved, err := st.RecentMessages(100)
 	if err != nil {
 		log.Fatal("load chat history", "err", err)
@@ -167,6 +170,18 @@ func main() {
 			stop()
 		}
 	}()
+	if *chatDays > 0 {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Hour):
+					pruneChat(st, *chatDays)
+				}
+			}
+		}()
+	}
 	<-ctx.Done()
 
 	// Tell every session we're restarting and give them a moment to show it
@@ -186,6 +201,19 @@ func main() {
 	}
 	<-archived
 	log.Info("stopped")
+}
+
+// pruneChat deletes chat messages older than days; 0 keeps them all.
+func pruneChat(st *store.Store, days int) {
+	if days <= 0 {
+		return
+	}
+	n, err := st.PruneMessages(time.Now().AddDate(0, 0, -days))
+	if err != nil {
+		log.Error("prune chat", "err", err)
+	} else if n > 0 {
+		log.Info("pruned chat", "messages", n, "days", days)
+	}
 }
 
 // release is the release tag of the build, set by the deploy:

@@ -219,3 +219,18 @@ func TestFingerprintOf(t *testing.T) {
 		t.Fatalf("unknown nick: %v %v", ok, err)
 	}
 }
+
+func TestPruneMessages(t *testing.T) {
+	st := open(t)
+	now := time.Unix(1_800_000_000, 0)
+	for _, age := range []time.Duration{40 * 24 * time.Hour, 31 * 24 * time.Hour, time.Hour} {
+		st.SaveMessage(Message{Time: now.Add(-age), Nick: "ada", Text: "hi"})
+	}
+	n, err := st.PruneMessages(now.AddDate(0, 0, -30))
+	if err != nil || n != 2 {
+		t.Fatalf("pruned %d, err %v", n, err)
+	}
+	if left, _ := st.RecentMessages(10); len(left) != 1 || !left[0].Time.Equal(now.Add(-time.Hour)) {
+		t.Fatalf("left %+v", left)
+	}
+}

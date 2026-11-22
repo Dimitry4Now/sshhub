@@ -217,6 +217,16 @@ func (s *Store) SaveMessage(m Message) error {
 	return err
 }
 
+// PruneMessages deletes chat messages posted before t and returns how many
+// were deleted.
+func (s *Store) PruneMessages(t time.Time) (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM messages WHERE created_at < ?`, t.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // RecentMessages returns the newest chat messages, oldest first.
 func (s *Store) RecentMessages(limit int) ([]Message, error) {
 	rows, err := s.db.Query(`
