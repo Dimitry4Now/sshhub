@@ -144,8 +144,11 @@ func main() {
 			// With 100 connections at this size the hub peaked at about
 			// 1.1 GB, inside the service's memory limit.
 			limit.Window(300, 100),
-			// Runs before the two above: sessions with a command (ssh host
-			// who) are admin commands and never reach the TUI.
+			// Turns banned visitors away before they reach the hub.
+			adm.Gate(),
+			// Runs before the ones above: sessions with a command (ssh host
+			// who) are admin commands and never reach the TUI, so a ban
+			// can't lock an admin out.
 			adm.Middleware(),
 			ratelimiter.Middleware(ratelimiter.NewRateLimiter(rate.Every(2*time.Second), 5, 4096)),
 			logging.Middleware(),

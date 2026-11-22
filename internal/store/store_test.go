@@ -156,3 +156,66 @@ func TestAudit(t *testing.T) {
 		t.Fatalf("audit = %+v err=%v", got, err)
 	}
 }
+
+func TestBans(t *testing.T) {
+	st := open(t)
+	now := time.Unix(1_800_000_000, 0)
+	if _, banned, err := st.Banned("SHA256:k", "203.0.113.9", now); banned || err != nil {
+		t.Fatalf("banned before any ban: %v %v", banned, err)
+	}
+
+	keyBan, err := st.AddBan(Ban{Kind: BanKey, Value: "SHA256:k", Until: now.Add(time.Hour), By: "SHA256:admin", Created: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AddBan(Ban{Kind: BanHost, Value: "203.0.113.9", Forever: true, By: "SHA256:admin", Created: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The key is out from any address, the host with any key or none.
+	if b, banned, _ := st.Banned("SHA256:k", "198.51.100.1", now); !banned || b.ID != keyBan {
+		t.Fatalf("key ban: %+v %v", b, banned)
+	}
+	if b, banned, _ := st.Banned("", "203.0.113.9", now); !banned || !b.Forever {
+		t.Fatalf("host ban: %+v %v", b, banned)
+	}
+	if _, banned, _ := st.Banned("", "198.51.100.1", now); banned {
+		t.Fatal("empty fingerprint matched a ban")
+	}
+
+	// Time bans run out.
+	later := now.Add(2 * time.Hour)
+	if _, banned, _ := st.Banned("SHA256:k", "198.51.100.1", later); banned {
+		t.Fatal("expired ban still applies")
+	}
+	if bans, _ := st.Bans(later); len(bans) != 1 || bans[0].Kind != BanHost {
+		t.Fatalf("active bans = %+v", bans)
+	}
+
+	// Banning again replaces the earlier ban.
+	again, _ := st.AddBan(Ban{Kind: BanKey, Value: "SHA256:k", Forever: true, By: "SHA256:admin", Created: later})
+	if bans, _ := st.Bans(later); len(bans) != 2 || bans[1].ID != again || !bans[1].Forever {
+		t.Fatalf("bans after re-ban = %+v", bans)
+	}
+
+	if ok, err := st.Unban(again); !ok || err != nil {
+		t.Fatalf("unban: %v %v", ok, err)
+	}
+	if ok, _ := st.Unban(again); ok {
+		t.Fatal("unbanned twice")
+	}
+	if _, banned, _ := st.Banned("SHA256:k", "198.51.100.1", later); banned {
+		t.Fatal("unbanned key still banned")
+	}
+}
+
+func TestFingerprintOf(t *testing.T) {
+	st := open(t)
+	st.Register("SHA256:ada", "Ada")
+	if fp, ok, err := st.FingerprintOf("ada"); !ok || err != nil || fp != "SHA256:ada" {
+		t.Fatalf("got %q %v %v", fp, ok, err)
+	}
+	if _, ok, err := st.FingerprintOf("nobody"); ok || err != nil {
+		t.Fatalf("unknown nick: %v %v", ok, err)
+	}
+}
