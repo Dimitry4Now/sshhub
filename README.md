@@ -102,7 +102,9 @@ Stopping the server (Ctrl+C, SIGTERM, `systemctl restart`) tells everyone the hu
 ### Project layout
 
 ```
-main.go                wiring: flags, middleware, startup and shutdown
+main.go                flags, backups, startup and shutdown
+server.go              the server: middleware, the app per session, the hub
+integration_test.go    the whole server tested over SSH
 internal/app           the app: one Bubble Tea model per session, a screen per page
 internal/hub           shared state: who's online, the chat, kicks and announcements
 internal/store         SQLite: schema, migrations, queries
@@ -135,6 +137,25 @@ The repo pins its Go version in `go.mod`; with Go 1.21 or newer installed, the r
 | `-chat-days` | 30 | delete chat messages older than this; 0 keeps them |
 | `-backup DIR`, `-keep N` | | snapshot the database and host key into DIR, keep N, exit |
 | `-version` | | print the version and exit |
+
+### Tests
+
+```sh
+go test -race ./...                        # unit tests: each package on its own
+go test -race -tags integration .          # integration tests: the whole server over SSH
+```
+
+The integration tests start the real server, with all its middleware, on a local port and use an SSH client the way visitors and admins do: a guest's visit, a new key picking a nickname, chat between two people, admin commands, bans, the connection and session limits, and the restart notice.
+
+To see coverage for both together:
+
+```sh
+pkgs=$(go list ./... | grep -v /scripts/ | paste -sd, -)
+mkdir -p /tmp/cov/unit /tmp/cov/integration
+go test -coverpkg="$pkgs" ./... -args -test.gocoverdir=/tmp/cov/unit
+go test -tags integration -coverpkg="$pkgs" . -args -test.gocoverdir=/tmp/cov/integration
+go tool covdata percent -i=/tmp/cov/unit,/tmp/cov/integration
+```
 
 ### Security
 
@@ -173,7 +194,7 @@ The file is read on every command, so adding or removing a key applies at once. 
 
 ```mermaid
 flowchart TB
-    branch["Feature branch"] -->|"pull request"| ci{"CI: format, vet,<br/>race tests, staticcheck,<br/>govulncheck, builds"}
+    branch["Feature branch"] -->|"pull request"| ci{"CI: lint, unit and<br/>integration tests,<br/>coverage, builds"}
     ci -->|"passes, merge"| develop["develop"]
     develop -->|"git tag v1.2.3"| tag["Release tag"]
     tag --> ci2{"CI again, and<br/>is the tag on develop?"}
@@ -183,6 +204,13 @@ flowchart TB
 ```
 
 - Work on a branch and open a pull request into `develop`. CI has to pass and the branch has to be up to date before it can merge.
+- CI runs these jobs side by side:
+  - **lint**: gofmt, tidy module files, `go vet`, staticcheck and govulncheck. The tools are pinned in `go.mod`.
+  - **unit tests** and **integration tests**, with the race detector.
+  - **coverage**: both kinds of tests merged into a per-package table in the run's summary. It fails below 75%.
+  - **build**: the server binary for linux/amd64 and linux/arm64.
+
+  The `test` job, the one the ruleset requires, passes only when all of them do, and sends the Telegram message when one fails.
 - To release, tag a commit on `develop`. The hub then shows the tag as its version:
   ```sh
   git switch develop && git pull

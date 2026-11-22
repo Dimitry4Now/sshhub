@@ -234,3 +234,25 @@ func TestPruneMessages(t *testing.T) {
 		t.Fatalf("left %+v", left)
 	}
 }
+
+func TestTopTiesGoToWhoeverGotThereFirst(t *testing.T) {
+	st := open(t)
+	st.Register("fp1", "early")
+	st.Register("fp2", "late")
+	// early plays first but reaches 100 only after late does.
+	st.AddScore("fp1", "trivia", 40)
+	st.AddScore("fp2", "trivia", 100)
+	st.AddScore("fp1", "trivia", 100)
+	st.AddScore("fp2", "snake", 10)
+
+	top, err := st.Top("trivia", 10)
+	if err != nil || len(top) != 2 {
+		t.Fatalf("top = %+v err=%v", top, err)
+	}
+	if top[0].Nick != "late" || top[1].Nick != "early" || top[1].Played != 2 || top[0].Played != 1 {
+		t.Fatalf("top = %+v", top)
+	}
+	if top, _ := st.Top("trivia", 1); len(top) != 1 || top[0].Nick != "late" {
+		t.Fatalf("limit: %+v", top)
+	}
+}

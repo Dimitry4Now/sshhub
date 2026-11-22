@@ -1,7 +1,8 @@
 name: CI
 
-# Every pull request is checked, and develop after a merge; the develop
-# ruleset requires "test" to pass. Pushing a release tag (v1.2.3) on develop
+# Every pull request is checked, and develop after a merge: lint, unit and
+# integration tests, coverage and builds, gathered by the "test" job that the
+# develop ruleset requires. Pushing a release tag (v1.2.3) on develop
 # checks it again and deploys it to production.
 on:
   push:
@@ -19,8 +20,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: test
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,20 +32,140 @@ jobs:
           go-version-file: go.mod
       - name: Format
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: Module files are tidy
+        run: go mod tidy -diff
+      # The integration tests build only with their tag, so check both.
       - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: go test -race ./...
+        run: |
+          go vet ./...
+          go vet -tags integration ./...
       # Both tools are pinned in go.mod (tool directives) and checked
       # against go.sum; Dependabot proposes updates.
       - name: Staticcheck
-        run: go tool staticcheck ./...
+        run: go tool staticcheck -tags integration ./...
       - name: Vulnerabilities
         run: go tool govulncheck ./...
-      - name: Build for the server
+
+  # Each package on its own, with its dependencies faked or in a temporary
+  # database.
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Test
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /dev/null .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /dev/null .
+          mkdir -p coverage/unit
+          go test -race -covermode=atomic -coverpkg="$(go list ./... | grep -v /scripts/ | paste -sd, -)" \
+            ./... -args -test.gocoverdir="$PWD/coverage/unit"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-unit
+          path: coverage/unit
+          retention-days: 7
+
+  # The whole server on a local port, used over SSH like visitors and
+  # admins do (integration_test.go).
+  integration:
+    name: integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: |
+          mkdir -p coverage/integration
+          go test -race -tags integration -covermode=atomic \
+            -coverpkg="$(go list ./... | grep -v /scripts/ | paste -sd, -)" \
+            . -args -test.gocoverdir="$PWD/coverage/integration"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-integration
+          path: coverage/integration
+          retention-days: 7
+
+  # Both kinds of tests together, shown in the run's summary. The run fails
+  # if coverage drops below COVERAGE_MIN percent.
+  coverage:
+    name: coverage
+    needs: [unit, integration]
+    runs-on: ubuntu-latest
+    env:
+      COVERAGE_MIN: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          path: coverage
+      - name: Report
+        run: |
+          dirs=coverage/coverage-unit,coverage/coverage-integration
+          go tool covdata textfmt -i="$dirs" -o coverage.out
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $NF); print $NF}')
+          {
+            echo "### Coverage: $total%"
+            echo
+            echo "| Package | Statements covered |"
+            echo "|---|---|"
+            go tool covdata percent -i="$dirs" |
+              awk '{for (i = 2; i <= NF; i++) if ($i == "coverage:") printf "| %s | %s |\n", $(i-1), $(i+1)}'
+            echo
+            echo "Unit and integration tests together; the minimum is $COVERAGE_MIN%."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "coverage $total% (minimum $COVERAGE_MIN%)"
+          awk -v t="$total" -v min="$COVERAGE_MIN" 'BEGIN { exit !(t >= min) }' ||
+            { echo "::error::coverage $total% is below $COVERAGE_MIN%"; exit 1; }
+
+  build:
+    name: build ${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build -trimpath -o sshhub .
+      - name: Binary
+        run: |
+          file sshhub
+          ls -l sshhub
+
+  # The one check the develop ruleset requires. It passes only if every job
+  # above did: a required check that is skipped counts as passed, so it
+  # can't simply need them.
+  test:
+    name: test
+    needs: [lint, unit, integration, coverage, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done
       # Set the TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID repository secrets to
       # get a message when a run fails; without them this step does nothing.
       - name: Notify on failure
@@ -91,8 +212,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          # Build from scratch: the cache is shared with the test job, which
-          # runs third-party tools, so it must not feed the release.
+          # Build from scratch: the cache is shared with the other jobs,
+          # which run third-party tools, so it must not feed the release.
           cache: false
       - name: Build
         run: |

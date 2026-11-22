@@ -186,15 +186,19 @@ func (s *Store) AddScore(fingerprint, game string, points int) error {
 	return err
 }
 
-// Top returns the best score per user for a game, highest first.
+// Top returns the best score per user for a game, highest first. Players
+// with the same best are ranked by who reached it first.
 func (s *Store) Top(game string, limit int) ([]Score, error) {
 	rows, err := s.db.Query(`
-		SELECT u.nick, MAX(s.points) AS best, COUNT(*) AS played
-		FROM scores s JOIN users u ON u.fingerprint = s.fingerprint
-		WHERE s.game = ?
-		GROUP BY s.fingerprint
-		ORDER BY best DESC, MIN(s.created_at) ASC
-		LIMIT ?`, game, limit)
+		SELECT u.nick, b.best, b.played FROM (
+			SELECT fingerprint, MAX(points) AS best, COUNT(*) AS played
+			FROM scores WHERE game = ?1 GROUP BY fingerprint
+		) b JOIN users u ON u.fingerprint = b.fingerprint
+		ORDER BY b.best DESC, (
+			SELECT MIN(id) FROM scores
+			WHERE game = ?1 AND fingerprint = b.fingerprint AND points = b.best
+		) ASC
+		LIMIT ?2`, game, limit)
 	if err != nil {
 		return nil, err
 	}

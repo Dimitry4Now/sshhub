@@ -6,45 +6,31 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
-	"regexp"
 	"runtime/debug"
 	"syscall"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/log/v2"
 	"charm.land/ssh"
-	"charm.land/wish/v2"
-	"charm.land/wish/v2/activeterm"
-	"charm.land/wish/v2/bubbletea"
-	"charm.land/wish/v2/logging"
-	"charm.land/wish/v2/ratelimiter"
-	gossh "golang.org/x/crypto/ssh"
-	"golang.org/x/time/rate"
 
-	"sshhub/assets"
-	"sshhub/internal/admin"
-	"sshhub/internal/app"
 	"sshhub/internal/backup"
-	"sshhub/internal/hub"
-	"sshhub/internal/limit"
 	"sshhub/internal/store"
 )
 
 func main() {
-	addr := flag.String("addr", ":23234", "listen address")
+	cfg := defaults
+	flag.StringVar(&cfg.addr, "addr", cfg.addr, "listen address")
 	dbPath := flag.String("db", "hub.db", "SQLite database path")
-	hostKey := flag.String("hostkey", ".ssh/id_ed25519", "host key path (created if missing)")
-	dev := flag.Bool("dev", false, "allow several sessions per person (for local testing)")
-	maxConns := flag.Int("max-conns", 100, "most connections open at once")
-	maxConnsPerIP := flag.Int("max-conns-per-ip", 10, "most connections open at once from one address")
+	flag.StringVar(&cfg.hostKey, "hostkey", cfg.hostKey, "host key path (created if missing)")
+	flag.BoolVar(&cfg.dev, "dev", false, "allow several sessions per person (for local testing)")
+	flag.IntVar(&cfg.maxConns, "max-conns", cfg.maxConns, "most connections open at once")
+	flag.IntVar(&cfg.maxConnsPerIP, "max-conns-per-ip", cfg.maxConnsPerIP, "most connections open at once from one address")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	backupDir := flag.String("backup", "", "snapshot the database and host key into this directory and exit")
 	keep := flag.Int("keep", 14, "with -backup: how many snapshots to keep")
-	adminKeys := flag.String("admin-keys", "", "authorized_keys file of keys that may run admin commands")
+	flag.StringVar(&cfg.adminKeys, "admin-keys", "", "authorized_keys file of keys that may run admin commands")
 	chatDays := flag.Int("chat-days", 30, "delete chat messages older than this many days (0 keeps them)")
 	flag.Parse()
 
@@ -64,99 +50,17 @@ func main() {
 		if err != nil {
 			log.Fatal("backup", "err", err)
 		}
-		if err := backup.CopyFile(*hostKey, *backupDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := backup.CopyFile(cfg.hostKey, *backupDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 			log.Fatal("back up host key", "err", err)
 		}
 		log.Info("backup written", "path", path)
 		return
 	}
 
-	// Prune before loading the history, so expired messages aren't shown.
+	// Prune before the server loads the history, so expired messages
+	// aren't shown.
 	pruneChat(st, *chatDays)
-	saved, err := st.RecentMessages(100)
-	if err != nil {
-		log.Fatal("load chat history", "err", err)
-	}
-	history := make([]hub.Message, len(saved))
-	for i, m := range saved {
-		history[i] = hub.Message{Time: m.Time, Nick: m.Nick, Text: m.Text}
-	}
-	h := hub.New(history)
-
-	// Save chat messages as they're posted, off the chat's hot path. The loop
-	// ends when the hub shuts down and closes the archive.
-	archived := make(chan struct{})
-	go func() {
-		defer close(archived)
-		for m := range h.Archive() {
-			if err := st.SaveMessage(store.Message{Time: m.Time, Nick: m.Nick, Text: m.Text}); err != nil {
-				log.Error("save chat message", "err", err)
-			}
-		}
-	}()
-
-	questions, err := app.LoadQuestions(assets.FS, "questions.json")
-	if err != nil {
-		log.Fatal("load questions", "err", err)
-	}
-	memes, err := app.LoadMemes(assets.FS, "memes")
-	if err != nil {
-		log.Fatal("load memes", "err", err)
-	}
-
-	deps := &app.Deps{
-		Store:     st,
-		Hub:       h,
-		Questions: questions,
-		Memes:     memes,
-		Version:   version(),
-	}
-
-	conns := limit.NewConns(*maxConns, *maxConnsPerIP)
-	adm := &admin.Admin{
-		KeysPath: *adminKeys,
-		Hub:      h,
-		Store:    st,
-		Conns:    conns.Open,
-		Version:  deps.Version,
-		Started:  time.Now(),
-	}
-
-	srv, err := wish.NewServer(
-		wish.WithAddress(*addr),
-		wish.WithHostKeyPath(*hostKey),
-		// Any key is welcome: the key fingerprint is the user's identity.
-		wish.WithPublicKeyAuth(func(ssh.Context, ssh.PublicKey) bool { return true }),
-		// Clients without a key get in as guests.
-		wish.WithKeyboardInteractiveAuth(func(ssh.Context, gossh.KeyboardInteractiveChallenge) bool { return true }),
-		// For sessions without the TUI (admin commands, stalled clients).
-		// The TUI redraws every second, which counts as activity here, so
-		// it closes sessions nobody types in itself.
-		wish.WithIdleTimeout(15*time.Minute),
-		wish.WithMaxTimeout(3*time.Hour),
-		ssh.WrapConn(func(_ ssh.Context, c net.Conn) net.Conn {
-			admitted := conns.Admit(c)
-			if admitted == nil {
-				log.Warn("connection refused: too many open", "remote", c.RemoteAddr(), "open", conns.Open())
-			}
-			return admitted
-		}),
-		wish.WithMiddleware(
-			bubbletea.MiddlewareWithProgramHandler(programHandler(deps, *dev)),
-			activeterm.Middleware(),
-			// With 100 connections at this size the hub peaked at about
-			// 1.1 GB, inside the service's memory limit.
-			limit.Window(300, 100),
-			// Turns banned visitors away before they reach the hub.
-			adm.Gate(),
-			// Runs before the ones above: sessions with a command (ssh host
-			// who) are admin commands and never reach the TUI, so a ban
-			// can't lock an admin out.
-			adm.Middleware(),
-			ratelimiter.Middleware(ratelimiter.NewRateLimiter(rate.Every(2*time.Second), 5, 4096)),
-			logging.Middleware(),
-		),
-	)
+	srv, err := newServer(cfg, st)
 	if err != nil {
 		log.Fatal("create server", "err", err)
 	}
@@ -164,7 +68,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
-		log.Info("starting ssh hub", "addr", *addr, "version", version())
+		log.Info("starting ssh hub", "addr", cfg.addr, "version", version())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 			log.Error("server stopped", "err", err)
 			stop()
@@ -183,23 +87,7 @@ func main() {
 		}()
 	}
 	<-ctx.Done()
-
-	// Tell every session we're restarting and give them a moment to show it
-	// and quit on their own; closing the server cuts the rest off. Then let
-	// the archive finish before the database closes.
-	log.Info("shutting down", "sessions", h.Count())
-	h.Shutdown()
-	select {
-	case <-h.Drained():
-	case <-time.After(5 * time.Second):
-		log.Warn("sessions still open after grace period", "sessions", h.Count())
-	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
-		log.Error("shutdown", "err", err)
-	}
-	<-archived
+	srv.shutdown(5 * time.Second)
 	log.Info("stopped")
 }
 
@@ -259,55 +147,4 @@ func commit() string {
 		v += " (" + t.Format("2006-01-02") + ")"
 	}
 	return v
-}
-
-var guestNameRe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
-
-func programHandler(deps *app.Deps, dev bool) bubbletea.ProgramHandler {
-	return func(s ssh.Session) *tea.Program {
-		sess := &app.Session{}
-		var identity string
-		if key := s.PublicKey(); key != nil {
-			sess.Fingerprint = gossh.FingerprintSHA256(key)
-			identity = "key:" + sess.Fingerprint
-			profile, _, err := deps.Store.Profile(sess.Fingerprint)
-			if err != nil {
-				log.Error("load profile", "err", err)
-			}
-			sess.Nick, sess.Theme = profile.Nick, profile.Theme
-		} else {
-			sess.Guest = true
-			sess.Nick = guestNameRe.ReplaceAllString(s.User(), "")
-			if len(sess.Nick) > 16 {
-				sess.Nick = sess.Nick[:16]
-			}
-			if sess.Nick == "" {
-				sess.Nick = "guest"
-			}
-			// Guests are told apart by address and username, so people
-			// sharing a router don't kick each other out.
-			host, _, _ := net.SplitHostPort(s.RemoteAddr().String())
-			identity = "guest:" + host + ":" + sess.Nick
-		}
-		if dev {
-			identity = ""
-		}
-
-		// Signals are for the whole server (see main), not for each session.
-		opts := append(bubbletea.MakeOptions(s), tea.WithoutSignalHandler())
-		p := tea.NewProgram(app.New(deps, sess), opts...)
-		sess.HubID = deps.Hub.Connect(hub.Client{
-			Identity: identity,
-			Nick:     sess.Nick,
-			Guest:    sess.Guest,
-			Addr:     s.RemoteAddr().String(),
-			Kick:     func(r hub.KickReason) { p.Send(app.KickedMsg{Reason: r}) },
-			Notify:   func(text string) { p.Send(app.NoticeMsg{Text: text}) },
-		})
-		go func() {
-			<-s.Context().Done()
-			deps.Hub.Disconnect(sess.HubID)
-		}()
-		return p
-	}
 }

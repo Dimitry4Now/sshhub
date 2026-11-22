@@ -16,6 +16,9 @@ const (
 	snakeRows  = 14
 	snakeStart = 140 * time.Millisecond
 	snakeFloor = 60 * time.Millisecond
+	// Turns pressed faster than the snake steps wait their turn, up to this
+	// many, so a quick up-then-left isn't lost.
+	maxTurns = 3
 )
 
 type point struct{ x, y int }
@@ -36,7 +39,7 @@ type snakeScreen struct {
 
 	body    []point // body[0] is the head
 	dir     point   // direction of the last step
-	next    point   // direction for the next step
+	turns   []point // queued directions, one per step
 	food    point
 	apples  int
 	speed   time.Duration
@@ -53,7 +56,7 @@ func newSnake(deps *Deps, sess *Session) *snakeScreen {
 func (s *snakeScreen) Init() tea.Cmd {
 	cx, cy := snakeCols/2, snakeRows/2
 	s.body = []point{{cx, cy}, {cx - 1, cy}, {cx - 2, cy}}
-	s.dir, s.next = dirRight, dirRight
+	s.dir, s.turns = dirRight, nil
 	s.apples, s.speed = 0, snakeStart
 	s.paused, s.over, s.saveMsg = false, false, ""
 	s.placeFood()
@@ -88,7 +91,9 @@ func (s *snakeScreen) placeFood() {
 
 // step advances the game one cell. It returns false when the snake dies.
 func (s *snakeScreen) step() bool {
-	s.dir = s.next
+	if len(s.turns) > 0 {
+		s.dir, s.turns = s.turns[0], s.turns[1:]
+	}
 	head := point{s.body[0].x + s.dir.x, s.body[0].y + s.dir.y}
 	if head.x < 0 || head.x >= snakeCols || head.y < 0 || head.y >= snakeRows {
 		return false
@@ -172,11 +177,18 @@ func (s *snakeScreen) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// turn queues a direction change, ignoring reversals into the snake's neck.
+// turn queues a direction change. It is checked against the direction the
+// snake will have by then: going the same way changes nothing, and reversing
+// would run into its neck.
 func (s *snakeScreen) turn(d point) {
-	if d.x != -s.dir.x || d.y != -s.dir.y {
-		s.next = d
+	last := s.dir
+	if n := len(s.turns); n > 0 {
+		last = s.turns[n-1]
 	}
+	if d == last || (d.x == -last.x && d.y == -last.y) || len(s.turns) >= maxTurns {
+		return
+	}
+	s.turns = append(s.turns, d)
 }
 
 func (s *snakeScreen) View(width, height int) string {
