@@ -194,3 +194,42 @@ func TestAdminKickAnnounceSessions(t *testing.T) {
 		t.Fatal("kicked session still there")
 	}
 }
+
+func TestJoinNoticesAreThrottledPerAddress(t *testing.T) {
+	h := New(nil)
+	watcher := h.Connect(Client{Nick: "watcher", Addr: "198.51.100.1:4000"})
+	_, sub := h.Join(watcher)
+	<-sub
+
+	// Two sessions from the same address share the allowance.
+	spam := []int{
+		h.Connect(Client{Nick: "spam", Addr: "203.0.113.9:1000"}),
+		h.Connect(Client{Nick: "spam2", Addr: "203.0.113.9:1001"}),
+	}
+	for range 10 {
+		for _, id := range spam {
+			h.Join(id)
+			h.Join(id) // joining again while in the chat isn't news
+			h.Leave(id)
+		}
+	}
+	notices := 0
+	for len(sub) > 0 {
+		msg := <-sub
+		if !msg.System {
+			t.Fatalf("unexpected %+v", msg)
+		}
+		notices++
+	}
+	// Every shown join has its leave, so nobody looks stuck in the chat.
+	if notices != 2*noticeBurst {
+		t.Fatalf("%d notices, want %d", notices, 2*noticeBurst)
+	}
+
+	// Other addresses aren't affected.
+	other := h.Connect(Client{Nick: "carol", Addr: "192.0.2.4:22"})
+	h.Join(other)
+	if msg := <-sub; msg.Nick != "carol" || msg.Text != "joined the chat" {
+		t.Fatalf("got %+v", msg)
+	}
+}
