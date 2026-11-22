@@ -3,7 +3,6 @@ package app
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -20,26 +19,15 @@ func key(code rune) tea.KeyPressMsg {
 }
 
 // press sends keys to the screen. Commands that produce one of the settings
-// screen's own result messages are run and fed back; anything else (such as
-// the text input's cursor blink, which re-arms itself forever) is dropped.
+// screen's own result messages are run and fed back; anything else is
+// dropped. Text inputs in tests must be still (see still), or their cursor
+// blink would make this wait.
 func press(s screen, keys ...tea.KeyPressMsg) {
 	for _, k := range keys {
-		if cmd := s.Update(k); cmd != nil {
-			feed(s, cmd)
-		}
-	}
-}
-
-func feed(s screen, cmd tea.Cmd) {
-	done := make(chan tea.Msg, 1)
-	go func() { done <- cmd() }()
-	select {
-	case msg := <-done:
-		switch msg.(type) {
+		switch msg := result(s.Update(k)); msg.(type) {
 		case themeSavedMsg, renamedMsg, scoresClearedMsg:
 			s.Update(msg)
 		}
-	case <-time.After(100 * time.Millisecond): // a timer, not a result
 	}
 }
 
@@ -59,7 +47,9 @@ func newTestSettings(t *testing.T, guest bool) (*settingsScreen, *store.Store, *
 		}
 	}
 	sess.HubID = h.Connect(hub.Client{Nick: sess.Nick, Guest: guest})
-	return newSettings(&Deps{Store: st, Hub: h}, sess), st, h
+	s := newSettings(&Deps{Store: st, Hub: h}, sess)
+	still(&s.input)
+	return s, st, h
 }
 
 func TestSettingsThemeIsSaved(t *testing.T) {
