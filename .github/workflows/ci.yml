@@ -45,6 +45,10 @@ jobs:
         run: go tool staticcheck -tags integration ./...
       - name: Vulnerabilities
         run: go tool govulncheck ./...
+      # The deploy scripts run as root on the server. ShellCheck comes with
+      # the runner image.
+      - name: Shell scripts
+        run: shellcheck --version && shellcheck deploy/*.sh deploy/sshhub-install scripts/screenshots/screenshots.sh
 
   # Each package on its own, with its dependencies faked or in a temporary
   # database.

@@ -205,7 +205,7 @@ flowchart TB
 
 - Work on a branch and open a pull request into `develop`. CI has to pass and the branch has to be up to date before it can merge.
 - CI runs these jobs side by side:
-  - **lint**: gofmt, tidy module files, `go vet`, staticcheck and govulncheck. The tools are pinned in `go.mod`.
+  - **lint**: gofmt, tidy module files, `go vet`, staticcheck and govulncheck (pinned in `go.mod`), and ShellCheck on the deploy and screenshot scripts.
   - **unit tests** and **integration tests**, with the race detector.
   - **coverage**: both kinds of tests merged into a per-package table in the run's summary. It fails below 75%.
   - **build**: the server binary for linux/amd64 and linux/arm64.
