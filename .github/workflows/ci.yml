@@ -35,10 +35,12 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test -race ./...
+      # Both tools are pinned in go.mod (tool directives) and checked
+      # against go.sum; Dependabot proposes updates.
       - name: Staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+        run: go tool staticcheck ./...
       - name: Vulnerabilities
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go tool govulncheck ./...
       - name: Build for the server
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /dev/null .
@@ -90,7 +92,7 @@ jobs:
         with:
           go-version-file: go.mod
           # Build from scratch: the cache is shared with the test job, which
-          # runs tools fetched at @latest, so it must not feed the release.
+          # runs third-party tools, so it must not feed the release.
           cache: false
       - name: Build
         run: |

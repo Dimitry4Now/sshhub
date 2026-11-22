@@ -1,4 +1,5 @@
-# Proposes updates for the commit-pinned actions in the workflows.
+# Proposes updates for the commit-pinned actions in the workflows, and for
+# the Go modules: the code's dependencies and the CI tools pinned in go.mod.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -7,3 +8,13 @@ updates:
       interval: weekly
     commit-message:
       prefix: ci
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    # One pull request a week for everything, not one per module.
+    groups:
+      go:
+        patterns: ["*"]
