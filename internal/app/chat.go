@@ -168,8 +168,15 @@ func (s *chatScreen) Help() string { return "enter send · esc leave chat" }
 // nickPalette colors nicknames consistently across sessions.
 var nickPalette = []string{"#CEDC00", "#00A19B", "#3DDC84", "#5FD7FF", "#FFAF5F", "#D7AFFF", "#FF8787", "#87D7AF"}
 
+// guestColor is every guest's color. Guests pick any name, so with the
+// palette a guest calling themselves alice would look just like alice.
+var guestColor = lipgloss.Color("#8A8A8A")
+
 func nickColor(nick string) color.Color {
+	if strings.HasSuffix(nick, " (guest)") {
+		return guestColor
+	}
 	h := fnv.New32a()
-	h.Write([]byte(strings.TrimSuffix(nick, " (guest)")))
+	h.Write([]byte(nick))
 	return lipgloss.Color(nickPalette[h.Sum32()%uint32(len(nickPalette))])
 }
