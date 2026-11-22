@@ -125,7 +125,9 @@ case "${1:-}" in
   key_file="${2:-$HOME/.ssh/id_ed25519.pub}"
   [[ -f "$key_file" ]] || die "no such key file: $key_file"
   ssh-keygen -lf "$key_file" >/dev/null || die "$key_file is not a public key"
-  # Sent on stdin, so the key never goes through shell quoting.
+  # Sent on stdin, so the key never goes through shell quoting. The command
+  # expands on the server, hence the single quotes.
+  # shellcheck disable=SC2016
   remote 'k="$(cat)"; sudo grep -qxF "$k" /etc/sshhub/admin_keys || echo "$k" | sudo tee -a /etc/sshhub/admin_keys >/dev/null' < "$key_file"
   echo "› admin: $(ssh-keygen -lf "$key_file")"
   ;;
