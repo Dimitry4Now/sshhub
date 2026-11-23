@@ -1,5 +1,10 @@
 # sshhub
 
+[![CI](https://github.com/Dimitry4Now/sshhub/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Dimitry4Now/sshhub/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/Dimitry4Now/sshhub?sort=semver&label=version)](https://github.com/Dimitry4Now/sshhub/tags)
+[![Go](https://img.shields.io/github/go-mod/go-version/Dimitry4Now/sshhub?logo=go&logoColor=white)](go.mod)
+[![Bubble Tea](https://img.shields.io/badge/TUI-Bubble%20Tea-FF5F87)](https://github.com/charmbracelet/bubbletea)
+
 A little online hangout that lives in your terminal. Play trivia and snake, chat with whoever's around, browse ASCII art memes and climb the leaderboard. Nothing to install: if you have a terminal, you're one command away.
 
 ```sh
